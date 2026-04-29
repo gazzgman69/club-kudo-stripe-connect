@@ -121,8 +121,6 @@ export const insertGigLineItemSchema = createInsertSchema(
   id: true,
   createdAt: true,
   updatedAt: true,
-  vatAmountPence: true,
-  totalPence: true,
 });
 export type InsertGigLineItem = z.infer<typeof insertGigLineItemSchema>;
 export type GigLineItem = typeof gigLineItemsTable.$inferSelect;
