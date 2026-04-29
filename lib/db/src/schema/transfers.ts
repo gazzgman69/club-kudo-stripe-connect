@@ -6,6 +6,7 @@ import {
   integer,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -53,6 +54,7 @@ export const transfersTable = pgTable(
     index("transfers_supplier_id_idx").on(table.supplierId),
     index("transfers_status_idx").on(table.status),
     index("transfers_idempotency_key_idx").on(table.idempotencyKey),
+    check("transfers_amount_positive", sql`amount_pence > 0`),
   ],
 );
 

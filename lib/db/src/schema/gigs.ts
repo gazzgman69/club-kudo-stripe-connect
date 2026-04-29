@@ -7,7 +7,9 @@ import {
   integer,
   boolean,
   index,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -47,6 +49,17 @@ export const gigsTable = pgTable(
     index("gigs_event_date_idx").on(table.eventDate),
     index("gigs_status_idx").on(table.status),
     index("gigs_status_event_date_idx").on(table.status, table.eventDate),
+    check(
+      "gigs_balance_due_date_valid",
+      sql`(
+        (
+          (status IN ('enquiry', 'reserved') AND balance_due_date IS NULL)
+          OR (status IN ('balance_invoiced', 'balance_paid', 'complete') AND balance_due_date IS NOT NULL)
+          OR (status IN ('lineup_confirmed', 'cancelled'))
+        )
+        AND (balance_due_date IS NULL OR balance_due_date <= event_date)
+      )`,
+    ),
   ],
 );
 
@@ -62,8 +75,14 @@ export const gigLineItemsTable = pgTable(
     lineType: gigLineTypeEnum("line_type").notNull(),
     amountPence: integer("amount_pence").notNull(),
     vatRateBps: integer("vat_rate_bps").notNull().default(0),
-    vatAmountPence: integer("vat_amount_pence").notNull().default(0),
-    totalPence: integer("total_pence").notNull(),
+    vatAmountPence: integer("vat_amount_pence")
+      .notNull()
+      .generatedAlwaysAs(sql`(amount_pence * vat_rate_bps / 10000)`),
+    totalPence: integer("total_pence")
+      .notNull()
+      .generatedAlwaysAs(
+        sql`(amount_pence + (amount_pence * vat_rate_bps / 10000))`,
+      ),
     isPlatformLine: boolean("is_platform_line").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -76,6 +95,14 @@ export const gigLineItemsTable = pgTable(
   (table) => [
     index("gig_line_items_gig_id_idx").on(table.gigId),
     index("gig_line_items_supplier_id_idx").on(table.supplierId),
+    check("gig_line_items_amount_positive", sql`amount_pence > 0`),
+    check(
+      "gig_line_items_platform_line_supplier_xor",
+      sql`(
+        (is_platform_line = true AND supplier_id IS NULL)
+        OR (is_platform_line = false AND supplier_id IS NOT NULL)
+      )`,
+    ),
   ],
 );
 
@@ -90,6 +117,12 @@ export type Gig = typeof gigsTable.$inferSelect;
 
 export const insertGigLineItemSchema = createInsertSchema(
   gigLineItemsTable,
-).omit({ id: true, createdAt: true, updatedAt: true });
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  vatAmountPence: true,
+  totalPence: true,
+});
 export type InsertGigLineItem = z.infer<typeof insertGigLineItemSchema>;
 export type GigLineItem = typeof gigLineItemsTable.$inferSelect;

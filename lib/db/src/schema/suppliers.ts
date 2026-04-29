@@ -21,7 +21,7 @@ export const suppliersTable = pgTable(
       .notNull()
       .references(() => usersTable.id),
     tradingName: text("trading_name").notNull(),
-    contactEmail: text("contact_email").notNull(),
+    contactEmail: text("contact_email"),
     instrument: text("instrument").array(),
     bio: text("bio"),
     stripeAccountId: text("stripe_account_id"),

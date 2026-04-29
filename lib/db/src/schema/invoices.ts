@@ -7,6 +7,7 @@ import {
   integer,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -45,6 +46,7 @@ export const invoicesTable = pgTable(
       .where(sql`${table.stripeInvoiceId} IS NOT NULL`),
     index("invoices_gig_id_idx").on(table.gigId),
     index("invoices_status_idx").on(table.status),
+    check("invoices_total_positive", sql`total_pence > 0`),
   ],
 );
 
