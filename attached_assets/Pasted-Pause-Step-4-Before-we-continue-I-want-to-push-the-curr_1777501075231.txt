@@ -1,0 +1,66 @@
+Pause Step 4. Before we continue, I want to push the current state to 
+GitHub so I can hand off to a different AI assistant (Cowork) for the 
+remaining phases.
+
+Please do the following:
+
+1. **Verify the .gitignore is correct.** It must exclude at minimum:
+   - .env, .env.local, .env.* (any env files)
+   - node_modules/
+   - dist/, build/, .next/, .turbo/ (any build outputs)
+   - .replit, replit.nix (Replit-specific config — not secrets but no 
+     point committing)
+   - Any local SQLite files or other dev database artefacts
+   - .DS_Store, Thumbs.db (OS junk)
+   - IDE folders (.vscode/, .idea/) unless we want to share specific 
+     settings
+
+   Show me the .gitignore before staging anything.
+
+2. **Confirm no secrets are in the codebase.** Grep for any hardcoded 
+   API keys, DSNs, connection strings, or tokens. Any value that looks 
+   like a secret should be referenced via process.env, not committed. 
+   Specifically check for:
+   - Stripe keys (sk_test_, sk_live_, pk_test_, pk_live_)
+   - Sentry DSNs
+   - Redis URLs (rediss://, redis://)
+   - Resend API keys (re_)
+   - Database connection strings
+   - Session secrets
+   
+   Report any findings before proceeding.
+
+3. **Verify the README is in good shape.** It should document:
+   - What the project is
+   - Tech stack
+   - Local dev setup (clone → install → env vars → migrate → run)
+   - Every environment variable required (with what each does, not the 
+     actual values)
+   - How to run the Stripe CLI for local thin-event webhook forwarding
+   - Migration workflow (push for dev, generate/migrate for production)
+   - Any other context a new developer needs to spin this up
+
+4. **Connect the Replit project to a new GitHub repo.**
+   - Repository name: club-kudo-stripe-connect
+   - Visibility: PRIVATE (this is non-negotiable — never public)
+   - I'll need to authorise the GitHub connection via Replit's UI when 
+     prompted
+
+5. **Create the first commit with a meaningful message.** Something like:
+
+   "Phase 1 foundation: schema, auth, middleware infrastructure
+   
+   - Drizzle schema with 14 tables, append-only audit log triggers
+   - Magic-link auth via Resend, Redis-backed sessions
+   - Express middleware: Sentry, Pino, Helmet, CORS, CSRF, rate limiting
+   - Stripe Connect V2 SDK wired (no routes implemented yet)
+   - Phase 1 Steps 1-3 complete; Steps 4-10 pending"
+
+6. **Push the initial commit to GitHub.**
+
+7. **Confirm the push succeeded** by giving me the GitHub repo URL so 
+   I can verify it's there and visible to me.
+
+Do not proceed to Step 4 of Phase 1 until I confirm the push is good 
+and I've handed off to the next assistant. The next AI working on this 
+project will pull from GitHub rather than continuing in Replit.

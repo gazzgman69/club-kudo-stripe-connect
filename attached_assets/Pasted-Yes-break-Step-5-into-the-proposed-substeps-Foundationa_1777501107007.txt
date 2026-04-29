@@ -1,0 +1,44 @@
+Yes, break Step 5 into the proposed substeps. Foundational dependencies 
+matter and the substep ordering is right:
+
+5a — Idempotency middleware (UUID validation, replay store backed by 
+     audit_log.idempotency_key)
+5b — Magic-link routes (POST /auth/magic-link, GET /auth/verify) 
+     INCLUDING the anti-enumeration timing-safe test. Don't defer this 
+     test to 5d — verify the behaviour the moment the route is built.
+5c — Session management (GET /auth/me, POST /auth/logout) + middleware 
+     (requireAuth, requireRole)
+5d — Rate limiter for magic-link + remaining integration tests
+
+Pause for review at the end of each substep before proceeding to the 
+next. Specifically I want to look at:
+- 5a: the idempotency middleware logic (replay detection, UUID 
+  validation, audit_log integration)
+- 5b: the magic-link generation (token entropy, hash-before-store, 
+  single-use marking) and the anti-enumeration timing test results
+- 5c: the session middleware composition (how requireAuth and 
+  requireRole compose, role checking against user_roles join table)
+- 5d: rate limiter configuration (limits per IP and per email, 
+  sensible defaults)
+
+Quick clarification needed on Resend before 5b:
+
+You mentioned setting up Resend "via the integrations flow" — please 
+clarify what this means. RESEND_API_KEY is already in Replit Secrets 
+(I added it earlier when I verified clubkudo.com on Resend). The Resend 
+account is already provisioned with verified domain. Are you saying:
+
+(a) Use the existing RESEND_API_KEY from Secrets and call Resend's API 
+    directly via their Node SDK (no integration flow needed), or
+(b) Replit has a built-in Resend integration that requires its own 
+    setup flow?
+
+If (b), please verify the integration uses my existing Resend account 
+with the verified clubkudo.com domain, not a new account — domain 
+verification doesn't carry over to a fresh account.
+
+If (a) is the right answer, just use the existing RESEND_API_KEY and 
+proceed.
+
+Otherwise the plan looks good. Proceed with 5a once Resend question is 
+clarified.
