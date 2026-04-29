@@ -1,0 +1,40 @@
+Plan looks comprehensive and addresses everything I asked for. Just a few 
+small clarifications before you start:
+
+1. **Idempotency key format**: The format `<action>-<entity_id>-<timestamp_day>` 
+   is too coarse — same-day retries of the same logical action would be 
+   correctly deduplicated, but legitimate distinct calls (e.g. resending an 
+   onboarding link twice in a day) would also be deduplicated incorrectly. 
+   Use `<action>-<entity_id>-<unique_request_id>` where unique_request_id 
+   is a UUID generated per logical request (stored in audit log). Retries 
+   of the same request use the same key; distinct requests use different keys.
+
+2. **Webhook raw body parsing**: Confirm that `express.raw({ type: 
+   'application/json' })` is applied ONLY to the webhook route, not globally. 
+   Global raw body parsing breaks the rest of the API.
+
+3. **Soft delete pattern**: Confirm consistent pattern across all tables. 
+   Use `deleted_at` (timestamp, nullable) and optionally `deleted_by_user_id`. 
+   No `is_deleted` boolean.
+
+4. **Audit log indexes**: Add composite index on (entity_type, entity_id), 
+   index on actor_user_id, index on created_at. Otherwise audit queries get 
+   slow once table grows.
+
+5. **Database migrations**: Drizzle `push` is fine for Phase 1 dev. Confirm 
+   that proper Drizzle Kit `generate`/`migrate` workflow with versioned 
+   migration files will be introduced before Phase 7 (going live).
+
+6. **User roles**: How is a person who is both a director (admin) AND a DJ 
+   (supplier) modelled? Gareth and Jake fit this case — they're both Club 
+   Kudo Ltd directors AND sole-trader DJs. Use a roles array or user_roles 
+   join table so a single user can have multiple roles, rather than two 
+   separate user accounts.
+
+7. **`losses_collector: 'application'`**: Confirmed correct — Club Kudo Ltd 
+   as platform absorbs supplier-side losses. I'm aware this means platform 
+   carries chargeback risk; this is an acceptable trade-off for our model.
+
+Once you confirm these, please scaffold the project and show me the proposed 
+database schema before writing significant code. The schema is the foundation; 
+I want to review it carefully.
