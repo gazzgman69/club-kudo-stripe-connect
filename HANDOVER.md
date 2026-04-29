@@ -240,25 +240,65 @@ oracle test for the anti-enumeration property.
 ### Resend email integration — needs the user's call
 
 Step 5b sends the magic-link email via Resend (`bookings@clubkudo.com` is the
-intended sender). Two paths:
+intended sender). **Both paths are viable; ASK THE USER which they prefer
+before installing the dependency:**
 
-**Option A (simpler):** User adds `RESEND_API_KEY` to Replit Secrets manually.
-Use the standard `resend` npm package directly. This is what I would have
-defaulted to, but I never confirmed it with the user.
+**Option A (manual secret):** User adds `RESEND_API_KEY` to Replit Secrets
+themselves. Install the `resend` npm package directly. Simplest.
 
-**Option B (Replit-native):** Use Replit's Integrations system (see
-`.local/skills/integrations`). This may or may not have a Resend connector —
-needs to be checked via `searchIntegrations("resend")` in code execution. If
-it exists, the integration provides credentials via `listConnections("resend")`
-without the user needing to manage the secret directly.
+**Option B (Replit-native integration — confirmed available):** The Replit
+integration catalogue has a Resend connector (`connector:ccfg_resend_…`,
+status `not_setup` at handover time). Triggering `proposeIntegration` against
+it walks the user through Resend OAuth/API-key entry; afterward
+`listConnections("resend")` returns the credentials and Replit handles refresh.
+No manual secret needed.
 
-**Recommendation:** Check the integrations catalogue first. If a Resend
-integration exists and is appropriate, use it. If not, fall back to the manual
-secret. Either way, ASK THE USER before adding the dependency or making the
-choice — they were emphatic about confirmation between phases.
+**Recommendation:** Default to Option B unless the user prefers manual
+control. The integrations system is the same pattern used for the GitHub
+connection set up during this handover (see "GitHub repository setup" below).
 
-The other secrets the API server already uses (`REDIS_URL`, `SENTRY_DSN`) are
-already in Secrets and working.
+The other secrets the API server already uses (`REDIS_URL`, `SENTRY_DSN`,
+`DATABASE_URL`, `SESSION_SECRET`) are already in Replit Secrets and working.
+
+### GitHub repository setup (status at handover)
+
+The GitHub integration was wired into the project during handover prep
+(`addIntegration` succeeded for the user's pre-authorised GitHub connection).
+A `proposeIntegration` call was issued so the user could grant project-level
+OAuth — when they complete that, `listConnections("github")` returns the
+proxy-based access for repo creation, issue management, etc.
+
+The repository **may or may not have been created yet** depending on whether
+the next assistant resumed before/after the user finished GitHub auth. Check:
+
+```javascript
+const conns = await listConnections("github");
+// If conns.length > 0, integration is ready.
+// Use connectors.proxy("github", "/user/repos", { method: "POST", body: ... })
+// to create the private repo `club-kudo-stripe-connect`.
+```
+
+### Tracked-but-should-be-ignored files needing cleanup
+
+The handover commit added a comprehensive `.gitignore`, but `.gitignore` does
+**not** auto-untrack files that are already in the index from earlier commits.
+The following are currently tracked and should be removed via
+`git rm --cached <path>` in a separate cleanup commit before any production
+deploy:
+
+- `.replit` — Replit dev environment config (not portable)
+- `.replitignore` — Replit-specific ignore rules
+- `attached_assets/Pasted-*.txt` (7 files) — paste artefacts from agent
+  sessions; pure noise
+
+These are safe to remove from git without affecting the working tree (the
+files stay on disk; they just stop being tracked). The `replit.md` file at
+the root is INTENTIONALLY tracked — it's the Replit project memory and acts
+as living project documentation, not platform config.
+
+This cleanup was deferred because the main agent's destructive-git protections
+prevent running `git rm` directly. The user (or next assistant in Plan mode)
+should handle it as a small follow-up task.
 
 ---
 

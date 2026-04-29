@@ -1,17 +1,41 @@
 # See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 
-# compiled output
+# ─── Environment / secrets ────────────────────────────────────────────
+# NEVER commit these. All env vars must be referenced via process.env.X
+# and documented in README.md.
+.env
+.env.*
+!.env.example
+.envrc
+
+# ─── Compiled output ──────────────────────────────────────────────────
 dist
-tmp
+build
+out
 out-tsc
+tmp
 *.tsbuildinfo
 .expo
 .expo-shared
+.next
+.nuxt
+.turbo
+.vite
+.parcel-cache
 
-# dependencies
+# ─── Dependencies ─────────────────────────────────────────────────────
 node_modules
+.pnp
+.pnp.js
 
-# IDEs and editors
+# ─── Local databases / dev artefacts ──────────────────────────────────
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-journal
+pgdata/
+
+# ─── IDE / editor ─────────────────────────────────────────────────────
 /.idea
 .project
 .classpath
@@ -19,15 +43,13 @@ node_modules
 *.launch
 .settings/
 *.sublime-workspace
-
-# IDE - VSCode
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
 
-# misc
+# ─── Misc ─────────────────────────────────────────────────────────────
 /.sass-cache
 /connect.lock
 /coverage
@@ -36,14 +58,28 @@ npm-debug.log
 yarn-error.log
 testem.log
 /typings
+*.log
+logs/
 
-# System Files
+# ─── System files ─────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
+# ─── Nx / monorepo cache ──────────────────────────────────────────────
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
-# Replit
+# ─── Replit-specific ──────────────────────────────────────────────────
+# These configure the Replit dev environment and are not portable.
 .cache/
 .local/
+.replit
+replit.nix
+.replitignore
+.upm/
+.config/
+.breakpoints
+
+# ─── Internal session artefacts ───────────────────────────────────────
+# Pasted user messages and other agent-session detritus
+attached_assets/
