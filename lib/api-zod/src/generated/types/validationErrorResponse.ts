@@ -17,8 +17,9 @@ Server stores the key in `audit_log.idempotency_key`.
 
  * OpenAPI spec version: 0.1.0
  */
-import type { HealthStatusStatus } from "./healthStatusStatus";
+import type { ValidationErrorBody } from "./validationErrorBody";
 
-export interface HealthStatus {
-  status: HealthStatusStatus;
-}
+/**
+ * Request validation failed
+ */
+export type ValidationErrorResponse = ValidationErrorBody;

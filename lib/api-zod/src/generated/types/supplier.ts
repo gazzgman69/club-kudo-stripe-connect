@@ -17,8 +17,21 @@ Server stores the key in `audit_log.idempotency_key`.
 
  * OpenAPI spec version: 0.1.0
  */
-import type { HealthStatusStatus } from "./healthStatusStatus";
+import type { SupplierOnboardingStatus } from "./supplierOnboardingStatus";
 
-export interface HealthStatus {
-  status: HealthStatusStatus;
+export interface Supplier {
+  id: string;
+  userId: string;
+  /** @maxLength 200 */
+  tradingName: string;
+  contactEmail?: string | null;
+  instrument?: string[] | null;
+  bio?: string | null;
+  stripeAccountId?: string | null;
+  stripeOnboardingStatus: SupplierOnboardingStatus;
+  /** Snapshot of Stripe `capabilities` object from last live fetch */
+  stripeCapabilitiesJson?: unknown | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt?: Date | null;
 }

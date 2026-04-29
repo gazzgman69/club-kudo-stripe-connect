@@ -36,7 +36,7 @@ export const transfersTable = pgTable(
     failureReason: text("failure_reason"),
     retryCount: integer("retry_count").notNull().default(0),
     nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
-    idempotencyKey: uuid("idempotency_key").notNull(),
+    stripeIdempotencyKey: text("stripe_idempotency_key").notNull(),
     version: integer("version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -53,7 +53,9 @@ export const transfersTable = pgTable(
     index("transfers_gig_id_idx").on(table.gigId),
     index("transfers_supplier_id_idx").on(table.supplierId),
     index("transfers_status_idx").on(table.status),
-    index("transfers_idempotency_key_idx").on(table.idempotencyKey),
+    uniqueIndex("transfers_stripe_idempotency_key_unique").on(
+      table.stripeIdempotencyKey,
+    ),
     check("transfers_amount_positive", sql`amount_pence > 0`),
   ],
 );

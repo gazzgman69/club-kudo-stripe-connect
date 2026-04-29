@@ -17,8 +17,10 @@ Server stores the key in `audit_log.idempotency_key`.
 
  * OpenAPI spec version: 0.1.0
  */
-import type { HealthStatusStatus } from "./healthStatusStatus";
 
-export interface HealthStatus {
-  status: HealthStatusStatus;
-}
+export type HealthStatusStatus =
+  (typeof HealthStatusStatus)[keyof typeof HealthStatusStatus];
+
+export const HealthStatusStatus = {
+  ok: "ok",
+} as const;

@@ -17,8 +17,17 @@ Server stores the key in `audit_log.idempotency_key`.
 
  * OpenAPI spec version: 0.1.0
  */
-import type { HealthStatusStatus } from "./healthStatusStatus";
 
-export interface HealthStatus {
-  status: HealthStatusStatus;
+export interface AuditLogEntry {
+  id: string;
+  timestamp: Date;
+  actorUserId?: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  beforeState?: unknown | null;
+  afterState?: unknown | null;
+  stripeEventId?: string | null;
+  idempotencyKey?: string | null;
+  metadata?: unknown | null;
 }

@@ -17,8 +17,8 @@ Server stores the key in `audit_log.idempotency_key`.
 
  * OpenAPI spec version: 0.1.0
  */
-import type { HealthStatusStatus } from "./healthStatusStatus";
 
-export interface HealthStatus {
-  status: HealthStatusStatus;
-}
+/**
+ * Token issued by GET /csrf-token; must match the ck.csrf cookie.
+ */
+export type CsrfTokenParameter = string;

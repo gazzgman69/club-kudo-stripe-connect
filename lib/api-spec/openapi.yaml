@@ -78,8 +78,20 @@ paths:
       tags: [auth]
       summary: Request a magic-link email
       description: |
-        Always returns 200 regardless of whether the email exists, to
-        prevent user enumeration. Rate-limited per IP and per email.
+        Always returns 200 with a generic message regardless of whether
+        the email belongs to a known user — this prevents user enumeration.
+
+        Server-side behaviour (CRITICAL):
+          - If a user with this email exists AND has at least one role:
+            generate token, store hash, send email via Resend.
+          - If the user does not exist OR has been soft-deleted:
+            do nothing. Do NOT send a "no account found" email — that
+            would defeat the entire anti-enumeration protection.
+          - In both cases, log the attempt (with a flag for found/not-found)
+            to `audit_log` so admins can spot scraping attempts.
+
+        Rate-limited per IP and per email (separately, lower of the two
+        windows wins) to throttle enumeration even further.
       security: []
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -147,9 +159,11 @@ paths:
       tags: [auth]
       summary: Destroy the current session
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "204": { description: Session destroyed }
+        "400": { $ref: "#/components/responses/ValidationError" }
         "403": { $ref: "#/components/responses/CsrfError" }
 
   # ─── Suppliers ────────────────────────────────────────────────────────
@@ -260,6 +274,7 @@ paths:
         - $ref: "#/components/parameters/CsrfToken"
       responses:
         "204": { description: Soft-deleted }
+        "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -405,13 +420,54 @@ components:
       name: cursor
       in: query
       required: false
-      description: Opaque pagination cursor returned by the previous page
+      description: |
+        Opaque pagination cursor. Echo back the value from
+        `pageInfo.nextCursor` of the previous response to fetch the
+        next page. Treat as opaque — do not parse or construct.
+
+        Cursor encoding (server contract): base64url(JSON({
+          v: <cursor_version_int>,
+          k: <last_row_sort_key>,
+          id: <last_row_id>      // tiebreaker
+        })). Always sorted by `created_at DESC, id DESC` unless an
+        endpoint documents otherwise. The `v` field lets us evolve the
+        cursor format; servers MUST reject unknown versions with
+        `400 cursor_invalid` so old cursors do not silently misbehave
+        across deploys.
+
+        Important: cursors are bound to the EXACT filter set that
+        produced them. Changing any filter while paginating is
+        undefined behaviour — the client should re-issue the first
+        page with the new filters.
       schema: { type: string }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
-      required: false
-      description: UUID v4. Replays of the same key on the same endpoint return the original result.
+      required: true
+      description: |
+        REQUIRED on every state-changing request (POST/PATCH/DELETE).
+        Must be a UUID v4. Replays of the same key on the same endpoint
+        return the original result without re-executing the side effect.
+
+        Server behaviour:
+          - Missing or malformed → `400 idempotency_key_required` /
+            `400 idempotency_key_invalid` (see ValidationErrorBody).
+          - Replay with same key + same path + same authenticated user →
+            return original response (status + body) from the audit_log /
+            replay store; do NOT re-execute the side effect.
+          - Replay with same key but DIFFERENT path or different
+            authenticated user → `409 idempotency_key_collision`.
+
+        The key is persisted in `audit_log.idempotency_key` for forensics.
+        Enforced from day 1 so Phase 4 transfer creation does not have
+        to retrofit the pattern.
+
+        Note: This is the CLIENT-FACING idempotency key only. Internal
+        Stripe API calls use a separate, server-generated composite key
+        of the form `<action>-<entity_id>-<uuid>` (e.g.
+        `transfer-inv_abc123-d290…`) which is stored in
+        `transfers.stripe_idempotency_key`. The two systems are intentionally
+        decoupled so client retries and Stripe-side retries are independent.
       schema: { type: string, format: uuid }
     CsrfToken:
       name: x-csrf-token
@@ -599,9 +655,24 @@ components:
           format: email
           maxLength: 320
           description: |
-            Login email for the supplier. If a user with this email already
-            exists, the supplier is linked to them; otherwise a new user
-            is created and given the `supplier` role.
+            Login email for the supplier. Server behaviour (CRITICAL —
+            both paths must be supported and tested):
+
+              - Email matches NO existing user → create a new `users` row,
+                INSERT the `supplier` role into `user_roles`, then create
+                the `suppliers` row linked to that user.
+              - Email matches an EXISTING user (e.g. an admin like Gareth
+                or Jake who is also performing as a supplier) → reuse
+                the existing user. INSERT the `supplier` role into
+                `user_roles` if not already present (the composite PK on
+                `(user_id, role)` makes this a no-op if the role exists).
+                Then create the `suppliers` row linked to that user.
+              - Email matches a user that already has a non-soft-deleted
+                supplier row → return 409 conflict.
+
+            All three branches must run inside a single DB transaction
+            and emit one `audit_log` entry recording the action and
+            which path was taken (in `metadata.creation_path`).
         tradingName: { type: string, minLength: 1, maxLength: 200 }
         contactEmail:
           type: string
@@ -657,7 +728,43 @@ components:
 
     SupplierOnboardingStatusResponse:
       type: object
-      required: [supplierId, stripeOnboardingStatus, fetchedAt]
+      description: |
+        Stripe V2 capabilities mapped to convenience booleans.
+
+        Stripe V2 does NOT expose top-level `charges_enabled` /
+        `payouts_enabled` booleans the way V1 did — those values must
+        be derived from `account.configuration.recipient.capabilities.*`.
+        The mapping below is OUR normalization for admin UI convenience.
+        The full V2 capabilities object is also returned in `capabilities`
+        for inspection.
+
+        Mapping (V2 capability → boolean):
+          - `chargesEnabled`      ← (no direct V2 equivalent — Connect
+              accounts in V2 are recipient-only; this stays `false` for
+              transfer-only accounts and is reserved for future use if
+              we add merchant capabilities)
+          - `payoutsEnabled`      ← `configuration.recipient.capabilities
+              .stripe_balance.stripe_transfers.status === "active"`
+              i.e. the supplier can receive transfers from our platform
+              balance into their Stripe balance and have them paid out.
+          - `detailsSubmitted`    ← `configuration.recipient.requirements
+              .currently_due` is empty (i.e. Stripe has no outstanding
+              asks blocking onboarding). `eventually_due` items do NOT
+              block — they are future requirements (e.g. when the supplier
+              crosses a transaction-volume threshold) and are surfaced
+              separately to admins via the raw `capabilities` blob.
+              This formula is the canonical definition for both this
+              field and any server-side gating logic.
+      required:
+        - supplierId
+        - stripeOnboardingStatus
+        - chargesEnabled
+        - payoutsEnabled
+        - detailsSubmitted
+        - requirementsCurrentlyDue
+        - requirementsPastDue
+        - fetchedAt
+        - cached
       properties:
         supplierId: { type: string, format: uuid }
         stripeAccountId:
@@ -665,17 +772,28 @@ components:
           nullable: true
         stripeOnboardingStatus:
           $ref: "#/components/schemas/SupplierOnboardingStatus"
-        chargesEnabled: { type: boolean }
-        payoutsEnabled: { type: boolean }
-        detailsSubmitted: { type: boolean }
+        chargesEnabled:
+          type: boolean
+          description: Reserved — currently always false for V2 recipient-only accounts
+        payoutsEnabled:
+          type: boolean
+          description: Derived from V2 stripe_transfers capability status === "active"
+        detailsSubmitted:
+          type: boolean
+          description: True when V2 requirements.currently_due is empty
         requirementsCurrentlyDue:
           type: array
+          description: V2 configuration.recipient.requirements.currently_due
           items: { type: string }
         requirementsPastDue:
           type: array
+          description: V2 configuration.recipient.requirements.past_due
           items: { type: string }
         capabilities:
-          description: Live snapshot of Stripe `capabilities` object
+          description: |
+            Live snapshot of `account.configuration.recipient.capabilities`
+            from V2 — used for inspection/forensics; clients should prefer
+            the normalized booleans above for routine display.
           nullable: true
         fetchedAt:
           type: string
