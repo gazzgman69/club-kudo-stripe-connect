@@ -1,0 +1,25 @@
+Schema review complete. Solid work overall — a few things to fix before pushing.
+Confirmed good:
+
+All three pre-review points addressed correctly (granted_by_user_id nullable, audit_log triggers, jsonb)
+Enums match spec exactly
+Audit log append-only triggers are comprehensive (UPDATE + DELETE + TRUNCATE) and idempotent (DROP TRIGGER IF EXISTS pattern)
+Partial unique indexes on Stripe IDs are correct
+Composite indexes well-chosen
+Cascade behaviour on gig_line_items → gigs is correct
+Optimistic locking version columns in place
+
+Issues to fix before pushing:
+
+gig_line_items: is_platform_line vs supplier_id constraint. Add a CHECK constraint preventing the contradictory states: CHECK ((is_platform_line = true AND supplier_id IS NULL) OR (is_platform_line = false AND supplier_id IS NOT NULL)). This belongs in the schema, not just the application code.
+gig_line_items: vat_amount_pence and total_pence as generated columns. Currently both are stored values that the application must keep consistent with amount_pence and vat_rate_bps. Convert to PostgreSQL generated columns: vat_amount_pence integer GENERATED ALWAYS AS (amount_pence * vat_rate_bps / 10000) STORED, and total_pence integer GENERATED ALWAYS AS (amount_pence + vat_amount_pence) STORED. Drizzle supports this via .generatedAlwaysAs(). This eliminates a class of consistency bug entirely.
+gigs: balance_due_date check constraint. Add CHECK constraint covering three rules in one expression: balance_due_date must be NULL when status in (enquiry, reserved); balance_due_date must be NOT NULL when status in (balance_invoiced, balance_paid, complete); balance_due_date <= event_date when both are not null.
+transfers and gig_line_items: amount_pence positive constraint. Add CHECK (amount_pence > 0) to both transfers.amount_pence and gig_line_items.amount_pence. Hold off on invoices.total_pence — please confirm whether £0 invoices are ever valid (e.g. comp gigs, fully discounted bookings) before constraining.
+suppliers.contact_email duplication of users.email. Currently suppliers has both user_id (references users with their email) AND contact_email as a separate field. Question: are these always the same, sometimes the same, or always different? If always the same → drop contact_email, query via the user join. If sometimes different (likely use case: supplier wants gig-related email going to a different address from their login email) → make contact_email nullable, application defaults to user.email when null.
+
+Things to flag for later (don't fix now):
+
+supplier instrument array might benefit from a GIN index when Phase 6 supplier search UI is built. Note for later.
+reconciliation_runs status='running' recovery logic is application code (Phase 5), not schema.
+
+Once those five fixes are in, schema is good to push. Please share the updated files for the affected tables (gigs.ts which contains gig_line_items, transfers.ts, suppliers.ts) before running push, so I can confirm the constraints and generated columns are syntactically right in Drizzle.
