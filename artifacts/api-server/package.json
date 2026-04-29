@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
+    "start": "SENTRY_PRELOAD_INTEGRATIONS=Http,Express node --enable-source-maps --import @sentry/node/preload --import ./dist/instrument.mjs ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/instrumentation-express": "^0.63.0",
     "@sentry/node": "^10.50.0",
     "@types/express-session": "^1.19.0",
     "@workspace/api-zod": "workspace:*",

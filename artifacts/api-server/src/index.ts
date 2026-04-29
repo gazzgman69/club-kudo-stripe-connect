@@ -1,9 +1,7 @@
-// Sentry MUST be initialized before any other module is imported so its
-// instrumentation can patch HTTP, Express, etc. We do this in a separate
-// module so the side-effect import order is unambiguous.
-import { initSentry } from "./lib/sentry";
-initSentry();
-
+// Sentry is initialized via `node --import ./dist/instrument.mjs` (see
+// package.json + artifact.toml). Do NOT import Sentry init here — ESM
+// hoists imports, so `--import` is the only way to guarantee Sentry's
+// instrumentation runs before Express, HTTP, etc. are loaded.
 import { logger } from "./lib/logger";
 import { getEnv } from "./lib/env";
 import { buildApp } from "./app";

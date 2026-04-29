@@ -9,6 +9,9 @@ declare module "express-session" {
     userId?: string;
     userEmail?: string;
     csrfSecret?: string;
+    // Set true by /api/csrf-token to force session persistence (otherwise
+    // express-session's saveUninitialized:false would never set ck.sid).
+    csrfBound?: boolean;
   }
 }
 

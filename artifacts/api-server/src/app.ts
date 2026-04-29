@@ -11,6 +11,7 @@ import { securityHeaders } from "./middlewares/security";
 import { corsMiddleware } from "./middlewares/cors";
 import { buildSessionMiddleware } from "./middlewares/session";
 import { buildGlobalRateLimiter } from "./middlewares/rateLimit";
+import { csrfProtection } from "./middlewares/csrf";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 
 import router from "./routes";
@@ -62,9 +63,19 @@ export async function buildApp(): Promise<Express> {
 
   // NOTE: Body parsers are mounted on the API router below — NOT globally.
   // The Stripe webhook route mounts its own express.raw() so signature
-  // verification gets the untouched bytes.
+  // verification gets the untouched bytes. Mount /api/webhooks BEFORE the
+  // body parsers + CSRF below so it sees raw bytes and bypasses CSRF
+  // (Stripe signs the request — that IS the auth).
+  // app.use("/api/webhooks", webhooksRouter);  // added in Phase 1 Step 7
+
   app.use("/api", express.json({ limit: "1mb" }));
   app.use("/api", express.urlencoded({ extended: true, limit: "1mb" }));
+
+  // CSRF: double-submit cookie pattern. Auto-bypasses GET/HEAD/OPTIONS,
+  // so /api/healthz and /api/csrf-token (both GET) work without a token.
+  // Every state-changing request must echo the token via x-csrf-token header.
+  app.use("/api", csrfProtection);
+
   app.use("/api", router);
 
   // 404 for unmatched routes
