@@ -61,12 +61,25 @@ export async function buildApp(): Promise<Express> {
   // 7. Global rate limit (Redis-backed) — applied AFTER session so it can key by user later
   app.use(await buildGlobalRateLimiter());
 
-  // NOTE: Body parsers are mounted on the API router below — NOT globally.
-  // The Stripe webhook route mounts its own express.raw() so signature
-  // verification gets the untouched bytes. Mount /api/webhooks BEFORE the
-  // body parsers + CSRF below so it sees raw bytes and bypasses CSRF
-  // (Stripe signs the request — that IS the auth).
-  // app.use("/api/webhooks", webhooksRouter);  // added in Phase 1 Step 7
+  // ─── Stripe webhooks: ALL FOUR constraints below MUST hold (Phase 1 Step 7) ───
+  // 1. Mounted BEFORE the global JSON body parser below — Stripe signature
+  //    verification needs the untouched raw bytes; any prior parsing breaks it.
+  // 2. The route handler must use `express.raw({ type: "application/json" })`
+  //    at the route level so only this endpoint sees raw bytes.
+  // 3. Must be mounted BEFORE `csrfProtection` — Stripe is server-to-server
+  //    and never sends a CSRF token; the webhook signature IS the auth.
+  // 4. Must NOT inherit the global rate limiter — Stripe can burst hundreds
+  //    of events. Mount `/api/webhooks` BEFORE the global limiter, OR apply
+  //    a dedicated webhook limiter sized for Stripe's traffic profile.
+  //
+  // Example wiring (Step 7):
+  //   app.use("/api/webhooks/stripe",
+  //     express.raw({ type: "application/json" }),
+  //     stripeWebhookRouter);
+  //
+  // Currently the global rate limiter IS mounted above this point, so when
+  // Step 7 adds the webhook router it must be moved above the rate limiter
+  // (and the Step 7 PR description must call this out).
 
   app.use("/api", express.json({ limit: "1mb" }));
   app.use("/api", express.urlencoded({ extended: true, limit: "1mb" }));

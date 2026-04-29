@@ -35,6 +35,14 @@ export async function buildSessionMiddleware(): Promise<RequestHandler> {
     cookie: {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
+      // sameSite: "lax" is DELIBERATE (not "strict"). Magic-link auth requires
+      // the user to click a link in their email client, which is a cross-site
+      // top-level GET to /api/auth/verify. "strict" would strip the session
+      // cookie on that navigation and break the entire auth flow. "lax"
+      // sends the cookie on top-level GETs from any origin (safe — the
+      // verify endpoint validates the single-use token, not just the session)
+      // while still blocking it on cross-site POST/iframe/XHR requests.
+      // CSRF protection covers state-changing requests separately.
       sameSite: "lax",
       maxAge: 1000 * 60 * 60 * 24 * 7,
       domain: env.COOKIE_DOMAIN,
