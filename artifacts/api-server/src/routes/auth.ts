@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   db,
   usersTable,
+  userRolesTable,
   magicLinkTokensTable,
 } from "@workspace/db";
 import { getEnv } from "../lib/env";
@@ -227,8 +228,88 @@ async function handleVerifyToken(
   });
 }
 
+/**
+ * GET /auth/me
+ *
+ * Returns the signed-in user plus their granted roles. 401 when the
+ * session has no userId. Useful for the admin UI's session-bootstrap
+ * call on page load.
+ */
+async function handleGetMe(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const userId = req.session?.userId;
+  if (!userId) {
+    return next(
+      new HttpError(401, "unauthorized", "Not signed in"),
+    );
+  }
+
+  const userRows = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      displayName: usersTable.displayName,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (userRows.length === 0) {
+    // Session points at a user that no longer exists. Treat as 401
+    // and clear the dangling session so subsequent calls don't loop.
+    req.session.destroy(() => {});
+    return next(
+      new HttpError(401, "unauthorized", "Session user no longer exists"),
+    );
+  }
+
+  const roleRows = await db
+    .select({ role: userRolesTable.role })
+    .from(userRolesTable)
+    .where(eq(userRolesTable.userId, userId));
+
+  res.status(200).json({
+    user: userRows[0],
+    roles: roleRows.map((r) => r.role),
+  });
+}
+
+/**
+ * POST /auth/logout
+ *
+ * Destroys the session and clears the cookie. Idempotent: returns 204
+ * regardless of whether a session was present, so a logged-out user
+ * hitting it again gets the same response.
+ */
+async function handleLogout(req: Request, res: Response): Promise<void> {
+  if (!req.session) {
+    res.status(204).end();
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    req.session.destroy((err) => {
+      if (err) {
+        // Log but continue — we still want to clear the cookie.
+        req.log.warn({ err }, "session destroy failed");
+      }
+      resolve();
+    });
+  });
+
+  // express-session sets the cookie name on the session middleware
+  // config; mirror it here. The session middleware uses "ck.sid".
+  res.clearCookie("ck.sid", { path: "/" });
+  res.status(204).end();
+}
+
 const router: IRouter = Router();
 router.post("/auth/magic-link", handleRequestMagicLink);
 router.get("/auth/verify", handleVerifyToken);
+router.get("/auth/me", handleGetMe);
+router.post("/auth/logout", handleLogout);
 
 export default router;

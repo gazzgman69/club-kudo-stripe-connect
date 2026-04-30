@@ -10,7 +10,11 @@ import { requestId } from "./middlewares/requestId";
 import { securityHeaders } from "./middlewares/security";
 import { corsMiddleware } from "./middlewares/cors";
 import { buildSessionMiddleware } from "./middlewares/session";
-import { buildGlobalRateLimiter } from "./middlewares/rateLimit";
+import {
+  buildGlobalRateLimiter,
+  buildAuthRateLimiter,
+  buildAuthEmailRateLimiter,
+} from "./middlewares/rateLimit";
 import { csrfProtection } from "./middlewares/csrf";
 import { idempotencyMiddleware } from "./middlewares/idempotency";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
@@ -93,12 +97,23 @@ export async function buildApp(): Promise<Express> {
   // Auth is via the RELOAD_SECRET env var checked inside the handler.
   app.use("/api", adminRouter);
 
-  // Public auth routes (Phase 1 Step 5b). Mounted BEFORE csrfProtection
-  // because the user has no session yet to bind a CSRF token to —
-  // they're trying to start one. Mounted BEFORE idempotencyMiddleware
-  // for the same reason: requiring Idempotency-Key on a sign-in form
-  // is unnecessary friction. Step 5d adds dedicated per-IP and
-  // per-email rate limiters to defend against magic-link abuse.
+  // Public auth routes (Phase 1 Step 5b/5c). Mounted BEFORE
+  // csrfProtection because the user has no session yet to bind a CSRF
+  // token to — they're trying to start one. Mounted BEFORE
+  // idempotencyMiddleware for the same reason: requiring
+  // Idempotency-Key on a sign-in form is unnecessary friction.
+  //
+  // /auth/magic-link gets two extra rate limiters layered on top
+  // (Phase 1 Step 5d). Per-IP catches naive volume attacks; per-email
+  // catches distributed attacks targeting a single mailbox.
+  const authIpLimiter = await buildAuthRateLimiter();
+  const authEmailLimiter = await buildAuthEmailRateLimiter();
+  app.post(
+    "/api/auth/magic-link",
+    authIpLimiter,
+    authEmailLimiter,
+    (_req, _res, next) => next(),
+  );
   app.use("/api", authRouter);
 
   // CSRF: double-submit cookie pattern. Auto-bypasses GET/HEAD/OPTIONS,

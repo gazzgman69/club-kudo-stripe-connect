@@ -18,6 +18,11 @@ vi.mock("@workspace/db", () => ({
   usersTable: {
     id: { name: "id" },
     email: { name: "email" },
+    displayName: { name: "display_name" },
+  },
+  userRolesTable: {
+    userId: { name: "user_id" },
+    role: { name: "role" },
   },
   magicLinkTokensTable: {
     id: { name: "id" },
@@ -75,6 +80,8 @@ function findHandler(method: "post" | "get", path: string) {
 
 const handleRequestMagicLink = findHandler("post", "/auth/magic-link");
 const handleVerifyToken = findHandler("get", "/auth/verify");
+const handleGetMe = findHandler("get", "/auth/me");
+const handleLogout = findHandler("post", "/auth/logout");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -98,19 +105,36 @@ function makeRes(): MockRes {
   return res;
 }
 
+interface TestSession extends Record<string, unknown> {
+  destroy?: Mock;
+}
+
 function makeReq(opts: {
   body?: unknown;
   query?: Record<string, string>;
-  session?: Record<string, unknown>;
+  session?: TestSession | null;
 }): Partial<Request> & { log: { error: Mock; warn: Mock; info: Mock } } {
+  let session: TestSession | null;
+  if (opts.session === null) {
+    session = null;
+  } else {
+    session = opts.session ?? {};
+    // Stub `destroy` so logout/me handlers can call it. Defaults to a
+    // success callback if the test didn't override it.
+    if (!session.destroy) {
+      session.destroy = vi.fn(
+        (cb?: (err?: Error) => void) => cb && cb(undefined),
+      );
+    }
+  }
   return {
     body: opts.body ?? {},
     query: opts.query ?? {},
     headers: {},
     // Real Express sessions carry methods (regenerate, destroy, save, …)
-    // that the magic-link handler doesn't touch. Cast through unknown
-    // so the test's plain object stand-in passes the type checker.
-    session: (opts.session ?? {}) as unknown as Request["session"],
+    // that some handlers don't touch. Cast through unknown so the
+    // test's plain object stand-in passes the type checker.
+    session: session as unknown as Request["session"],
     protocol: "https",
     get: vi.fn((header: string) =>
       header.toLowerCase() === "host" ? "example.test" : undefined,
@@ -119,6 +143,13 @@ function makeReq(opts: {
   } as Partial<Request> & {
     log: { error: Mock; warn: Mock; info: Mock };
   };
+}
+
+function makeResWithCookieClear(): MockRes & { clearCookie: Mock; end: Mock } {
+  const res = makeRes() as MockRes & { clearCookie: Mock; end: Mock };
+  res.clearCookie = vi.fn(() => res);
+  res.end = vi.fn(() => res);
+  return res;
 }
 
 // Stub the chained drizzle select/where/limit returning a list of rows.
@@ -358,5 +389,143 @@ describe("GET /auth/verify", () => {
     const err = (next as Mock).mock.calls[0][0];
     expect(err).toBeInstanceOf(HttpError);
     expect(err.code).toBe("magic_link_invalid");
+  });
+});
+
+describe("GET /auth/me", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 401 unauthorized when no session userId is present", async () => {
+    const req = makeReq({ session: {} });
+    const res = makeRes();
+    const next = vi.fn() as NextFunction;
+
+    await handleGetMe(req as Request, res as unknown as Response, next);
+
+    const err = (next as Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(401);
+    expect(err.code).toBe("unauthorized");
+    expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
+  it("returns the user and their roles when signed in", async () => {
+    // Two select calls: first for the user row, then for the role rows.
+    let call = 0;
+    dbMock.select.mockImplementation(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () => {
+            call++;
+            return Promise.resolve([
+              {
+                id: "user-1",
+                email: "alice@example.com",
+                displayName: "Alice",
+              },
+            ]);
+          },
+        }),
+      }),
+    }));
+    // Override after first call: the second select for roles doesn't
+    // hit `.limit()` — it ends at `.where()`.
+    const realSelect = dbMock.select.getMockImplementation();
+    dbMock.select.mockImplementation(() => {
+      const userResult = realSelect && realSelect();
+      // For the second call (roles), drop the .limit and have .where
+      // resolve directly to a list.
+      if (call >= 1) {
+        return {
+          from: () => ({
+            where: () =>
+              Promise.resolve([{ role: "admin" }, { role: "supplier" }]),
+          }),
+        };
+      }
+      return userResult;
+    });
+
+    const req = makeReq({ session: { userId: "user-1" } });
+    const res = makeRes();
+    const next = vi.fn() as NextFunction;
+
+    await handleGetMe(req as Request, res as unknown as Response, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.lastBody).toMatchObject({
+      user: { id: "user-1", email: "alice@example.com", displayName: "Alice" },
+      roles: expect.arrayContaining(["admin", "supplier"]),
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("destroys the session and 401s when the session points to a missing user", async () => {
+    // First select (user lookup) returns empty.
+    stubSelect([]);
+
+    const destroy = vi.fn((cb?: (err?: Error) => void) => cb && cb(undefined));
+    const req = makeReq({
+      session: { userId: "ghost-user", destroy } as unknown as TestSession,
+    });
+    const res = makeRes();
+    const next = vi.fn() as NextFunction;
+
+    await handleGetMe(req as Request, res as unknown as Response, next);
+
+    expect(destroy).toHaveBeenCalledOnce();
+    const err = (next as Mock).mock.calls[0][0];
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.status).toBe(401);
+  });
+});
+
+describe("POST /auth/logout", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("destroys the session, clears the cookie, and returns 204", async () => {
+    const destroy = vi.fn((cb?: (err?: Error) => void) => cb && cb(undefined));
+    const req = makeReq({
+      session: { userId: "user-1", destroy } as unknown as TestSession,
+    });
+    const res = makeResWithCookieClear();
+
+    await handleLogout(req as Request, res as unknown as Response);
+
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(res.clearCookie).toHaveBeenCalledWith(
+      "ck.sid",
+      expect.objectContaining({ path: "/" }),
+    );
+    expect(res.statusCode).toBe(204);
+    expect(res.end).toHaveBeenCalled();
+  });
+
+  it("is idempotent — returns 204 even when no session exists", async () => {
+    const req = makeReq({ session: null });
+    const res = makeResWithCookieClear();
+
+    await handleLogout(req as Request, res as unknown as Response);
+
+    expect(res.statusCode).toBe(204);
+  });
+
+  it("still returns 204 if session.destroy errors (logs but doesn't throw)", async () => {
+    const destroy = vi.fn((cb?: (err?: Error) => void) =>
+      cb && cb(new Error("redis blip")),
+    );
+    const req = makeReq({
+      session: { userId: "user-1", destroy } as unknown as TestSession,
+    });
+    const res = makeResWithCookieClear();
+
+    await handleLogout(req as Request, res as unknown as Response);
+
+    expect(res.statusCode).toBe(204);
+    expect(req.log.warn).toHaveBeenCalled();
   });
 });
