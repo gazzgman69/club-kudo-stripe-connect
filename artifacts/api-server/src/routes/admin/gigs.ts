@@ -7,6 +7,7 @@ import {
 } from "express";
 import { z } from "zod";
 import { eq, and, isNull, desc, sql, asc } from "drizzle-orm";
+import crypto from "node:crypto";
 import {
   db,
   clientsTable,
@@ -14,6 +15,8 @@ import {
   gigLineItemsTable,
   invoicesTable,
   platformSettingsTable,
+  suppliersTable,
+  transfersTable,
 } from "@workspace/db";
 import { getStripe } from "../../lib/stripe";
 import { HttpError } from "../../middlewares/errorHandler";
@@ -686,6 +689,480 @@ async function handleCreateReservationInvoice(
   res.status(201).json(persisted);
 }
 
+// ─── Balance invoice ────────────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/gigs/:id/balance-invoice
+ *
+ * Mirror of the reservation invoice handler but filters
+ * invoice_phase = 'balance'. Allowed when gig.status is 'reserved' or
+ * 'lineup_confirmed'. Transitions gig to 'balance_invoiced'.
+ *
+ * Idempotent at the gig level: an existing non-void balance invoice
+ * blocks re-issue with 409 (void it in Stripe first to retry).
+ */
+async function handleCreateBalanceInvoice(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  let params: z.infer<typeof idParamSchema>;
+  try {
+    params = idParamSchema.parse(req.params);
+  } catch (err) {
+    return next(err);
+  }
+  const stripe = getStripe();
+
+  const gigRows = await db
+    .select()
+    .from(gigsTable)
+    .where(and(eq(gigsTable.id, params.id), isNull(gigsTable.deletedAt)))
+    .limit(1);
+  if (gigRows.length === 0) {
+    return next(new HttpError(404, "gig_not_found", "Gig not found"));
+  }
+  const gig = gigRows[0];
+  if (gig.status !== "reserved" && gig.status !== "lineup_confirmed") {
+    return next(
+      new HttpError(
+        400,
+        "gig_status_invalid",
+        `Cannot send balance invoice when gig status is '${gig.status}' (need 'reserved' or 'lineup_confirmed')`,
+      ),
+    );
+  }
+
+  const clientRows = await db
+    .select()
+    .from(clientsTable)
+    .where(
+      and(
+        eq(clientsTable.id, gig.clientId),
+        isNull(clientsTable.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (clientRows.length === 0) {
+    return next(
+      new HttpError(404, "client_not_found", "Gig's client not found"),
+    );
+  }
+  const client = clientRows[0];
+
+  const lineItems = await db
+    .select()
+    .from(gigLineItemsTable)
+    .where(
+      and(
+        eq(gigLineItemsTable.gigId, gig.id),
+        eq(gigLineItemsTable.invoicePhase, "balance"),
+      ),
+    );
+  if (lineItems.length === 0) {
+    return next(
+      new HttpError(
+        400,
+        "no_balance_lines",
+        "Gig has no line items with invoice_phase = 'balance'",
+      ),
+    );
+  }
+
+  const existing = await db
+    .select()
+    .from(invoicesTable)
+    .where(
+      and(
+        eq(invoicesTable.gigId, gig.id),
+        eq(invoicesTable.invoiceType, "balance"),
+      ),
+    );
+  const blocking = existing.find((inv) => inv.status !== "void");
+  if (blocking) {
+    return next(
+      new HttpError(
+        409,
+        "balance_invoice_exists",
+        `Gig already has a non-void balance invoice (${blocking.id})`,
+      ),
+    );
+  }
+
+  const settingsRows = await db
+    .select()
+    .from(platformSettingsTable)
+    .where(eq(platformSettingsTable.id, "singleton"))
+    .limit(1);
+  if (settingsRows.length === 0) {
+    return next(
+      new HttpError(
+        500,
+        "platform_settings_missing",
+        "platform_settings singleton row not found",
+      ),
+    );
+  }
+  const settings = settingsRows[0];
+
+  let stripeCustomerId = client.stripeCustomerId;
+  try {
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: client.email,
+        name: client.fullName,
+        phone: client.phone ?? undefined,
+        metadata: { clientId: client.id },
+      });
+      stripeCustomerId = customer.id;
+      await db
+        .update(clientsTable)
+        .set({ stripeCustomerId })
+        .where(eq(clientsTable.id, client.id));
+    }
+  } catch (err) {
+    req.log.error({ err, clientId: client.id }, "stripe customers.create failed");
+    return next(
+      new HttpError(
+        502,
+        "stripe_customer_create_failed",
+        (err as Error).message,
+      ),
+    );
+  }
+
+  const totalPence = lineItems.reduce(
+    (sum, li) =>
+      sum + Math.round((li.amountPence * (10000 + li.vatRateBps)) / 10000),
+    0,
+  );
+
+  let stripeInvoiceId: string;
+  let pdfUrl: string | undefined;
+  try {
+    for (const li of lineItems) {
+      const grossPence = Math.round(
+        (li.amountPence * (10000 + li.vatRateBps)) / 10000,
+      );
+      await stripe.invoiceItems.create({
+        customer: stripeCustomerId,
+        amount: grossPence,
+        currency: settings.currency,
+        description: li.description,
+        metadata: {
+          gigId: gig.id,
+          gigLineItemId: li.id,
+          vatRateBps: li.vatRateBps.toString(),
+          ...(li.supplierId ? { supplierId: li.supplierId } : {}),
+        },
+      });
+    }
+    const stripeInvoice = await stripe.invoices.create({
+      customer: stripeCustomerId,
+      collection_method: "send_invoice",
+      days_until_due: settings.defaultInvoicePaymentTermsDays,
+      metadata: { gigId: gig.id, invoiceType: "balance" },
+      auto_advance: false,
+    });
+    if (!stripeInvoice.id) {
+      throw new Error("Stripe invoice was created without an id");
+    }
+    const finalised = await stripe.invoices.finalizeInvoice(stripeInvoice.id);
+    if (!finalised.id) {
+      throw new Error("Stripe invoice finalize returned no id");
+    }
+    await stripe.invoices.sendInvoice(finalised.id);
+    stripeInvoiceId = finalised.id;
+    pdfUrl = finalised.invoice_pdf ?? undefined;
+  } catch (err) {
+    req.log.error({ err, gigId: gig.id }, "stripe balance invoice flow failed");
+    return next(
+      new HttpError(
+        502,
+        "stripe_invoice_flow_failed",
+        (err as Error).message,
+      ),
+    );
+  }
+
+  const persisted = await db.transaction(async (tx) => {
+    const [invoice] = await tx
+      .insert(invoicesTable)
+      .values({
+        gigId: gig.id,
+        invoiceType: "balance",
+        stripeInvoiceId,
+        status: "open",
+        totalPence,
+        currency: settings.currency,
+        issuedAt: new Date(),
+        pdfUrl: pdfUrl ?? null,
+      })
+      .returning();
+    await tx
+      .update(gigsTable)
+      .set({ status: "balance_invoiced" })
+      .where(eq(gigsTable.id, gig.id));
+    return invoice;
+  });
+
+  res.status(201).json(persisted);
+}
+
+// ─── Transfer scheduling ────────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/gigs/:id/transfers
+ *
+ * Creates Stripe Transfers to each supplier's connected account for
+ * every line item on every PAID invoice (reservation + balance) that
+ * has an underlying Stripe charge_id. Each transfer carries
+ * `source_transaction = <charge_id>` so funds are pulled from the
+ * original platform charge (HMRC-defensible Separate Charges and
+ * Transfers pattern).
+ *
+ * Idempotent per line item: if a transfer row already exists for a
+ * given gig_line_item_id, it's skipped (and the existing row is
+ * returned with `skipped: true`). Stripe-side idempotency uses a
+ * `transfer-<line_item_id>-<uuid>` key passed via the
+ * `Idempotency-Key` header so retries hit the same transfer.
+ *
+ * In Step 9 the V2 thin webhook handler will trigger this
+ * automatically when an invoice transitions to paid. For now an
+ * admin invokes it manually after marking the underlying invoice
+ * paid in Stripe Test (or in production after the real charge
+ * lands).
+ */
+async function handleCreateTransfers(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  let params: z.infer<typeof idParamSchema>;
+  try {
+    params = idParamSchema.parse(req.params);
+  } catch (err) {
+    return next(err);
+  }
+  const stripe = getStripe();
+
+  // Verify gig + load all paid invoices for it.
+  const gigRows = await db
+    .select()
+    .from(gigsTable)
+    .where(and(eq(gigsTable.id, params.id), isNull(gigsTable.deletedAt)))
+    .limit(1);
+  if (gigRows.length === 0) {
+    return next(new HttpError(404, "gig_not_found", "Gig not found"));
+  }
+  const gig = gigRows[0];
+
+  const invoicesForGig = await db
+    .select()
+    .from(invoicesTable)
+    .where(eq(invoicesTable.gigId, gig.id));
+  const paidWithCharge = invoicesForGig.filter(
+    (inv) => inv.stripeChargeId && inv.status !== "void",
+  );
+  if (paidWithCharge.length === 0) {
+    return next(
+      new HttpError(
+        400,
+        "no_paid_invoices",
+        "Cannot create transfers — no invoice on this gig has a captured Stripe charge yet",
+      ),
+    );
+  }
+
+  // Map invoice_phase → stripe_charge_id for the transfer source.
+  const chargeByPhase: Record<string, string> = {};
+  for (const inv of paidWithCharge) {
+    if (inv.stripeChargeId) {
+      chargeByPhase[inv.invoiceType === "reservation" ? "reservation" : "balance"] =
+        inv.stripeChargeId;
+    }
+  }
+
+  const settingsRows = await db
+    .select()
+    .from(platformSettingsTable)
+    .where(eq(platformSettingsTable.id, "singleton"))
+    .limit(1);
+  if (settingsRows.length === 0) {
+    return next(
+      new HttpError(
+        500,
+        "platform_settings_missing",
+        "platform_settings singleton row not found",
+      ),
+    );
+  }
+  const settings = settingsRows[0];
+
+  // Pull all supplier line items joined with supplier rows. Skip
+  // platform lines (they're Club Kudo's revenue, no transfer).
+  const lineRows = await db
+    .select({
+      lineItem: gigLineItemsTable,
+      supplier: suppliersTable,
+    })
+    .from(gigLineItemsTable)
+    .innerJoin(
+      suppliersTable,
+      eq(suppliersTable.id, gigLineItemsTable.supplierId),
+    )
+    .where(
+      and(
+        eq(gigLineItemsTable.gigId, gig.id),
+        eq(gigLineItemsTable.isPlatformLine, false),
+      ),
+    );
+
+  // Index existing transfers by gig_line_item_id for idempotency.
+  const existingTransfers = await db
+    .select()
+    .from(transfersTable)
+    .where(eq(transfersTable.gigId, gig.id));
+  const existingByLineId = new Map<string, typeof transfersTable.$inferSelect>(
+    existingTransfers.map((t) => [t.gigLineItemId, t]),
+  );
+
+  interface TransferResult {
+    transfer: typeof transfersTable.$inferSelect;
+    skipped?: boolean;
+  }
+
+  const results: TransferResult[] = [];
+  for (const { lineItem: li, supplier } of lineRows) {
+    if (existingByLineId.has(li.id)) {
+      const existing = existingByLineId.get(li.id);
+      if (existing) results.push({ transfer: existing, skipped: true });
+      continue;
+    }
+
+    const sourceCharge = chargeByPhase[li.invoicePhase];
+    if (!sourceCharge) {
+      // The invoice this line belongs to hasn't been paid yet —
+      // skip silently. A future call can pick it up once it is.
+      continue;
+    }
+
+    // Gross amount: amount_pence + VAT. The supplier is the merchant
+    // for tax purposes, so they receive the full gross and remit
+    // their own VAT (or none, if not registered).
+    const grossPence = Math.round(
+      (li.amountPence * (10000 + li.vatRateBps)) / 10000,
+    );
+    const idempKey = `transfer-${li.id}-${crypto.randomUUID()}`;
+
+    if (!supplier.stripeAccountId) {
+      const [inserted] = await db
+        .insert(transfersTable)
+        .values({
+          gigId: gig.id,
+          gigLineItemId: li.id,
+          supplierId: supplier.id,
+          stripeChargeId: sourceCharge,
+          amountPence: grossPence,
+          currency: settings.currency,
+          status: "failed",
+          failureReason: "supplier_not_onboarded",
+          stripeIdempotencyKey: idempKey,
+        })
+        .returning();
+      results.push({ transfer: inserted });
+      continue;
+    }
+
+    try {
+      const transfer = await stripe.transfers.create(
+        {
+          amount: grossPence,
+          currency: settings.currency,
+          destination: supplier.stripeAccountId,
+          source_transaction: sourceCharge,
+          transfer_group: gig.id,
+          metadata: {
+            gigId: gig.id,
+            gigLineItemId: li.id,
+            supplierId: supplier.id,
+            invoicePhase: li.invoicePhase,
+          },
+        },
+        { idempotencyKey: idempKey },
+      );
+
+      const [inserted] = await db
+        .insert(transfersTable)
+        .values({
+          gigId: gig.id,
+          gigLineItemId: li.id,
+          supplierId: supplier.id,
+          stripeTransferId: transfer.id,
+          stripeChargeId: sourceCharge,
+          amountPence: grossPence,
+          currency: settings.currency,
+          status: "created",
+          stripeIdempotencyKey: idempKey,
+        })
+        .returning();
+      results.push({ transfer: inserted });
+    } catch (err) {
+      req.log.error(
+        { err, lineItemId: li.id, supplierId: supplier.id },
+        "stripe transfers.create failed",
+      );
+      const [inserted] = await db
+        .insert(transfersTable)
+        .values({
+          gigId: gig.id,
+          gigLineItemId: li.id,
+          supplierId: supplier.id,
+          stripeChargeId: sourceCharge,
+          amountPence: grossPence,
+          currency: settings.currency,
+          status: "failed",
+          failureReason: ((err as Error).message ?? "unknown").slice(0, 500),
+          stripeIdempotencyKey: idempKey,
+        })
+        .returning();
+      results.push({ transfer: inserted });
+    }
+  }
+
+  res.status(200).json({
+    transfers: results.map((r) => ({
+      ...r.transfer,
+      ...(r.skipped ? { skipped: true } : {}),
+    })),
+  });
+}
+
+/**
+ * GET /api/admin/gigs/:id/transfers
+ *
+ * Lists every Stripe Transfer attempted for this gig. Useful for
+ * debugging transfer failures and seeing the audit trail of payouts.
+ */
+async function handleListTransfers(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  let params: z.infer<typeof idParamSchema>;
+  try {
+    params = idParamSchema.parse(req.params);
+  } catch (err) {
+    return next(err);
+  }
+  const rows = await db
+    .select()
+    .from(transfersTable)
+    .where(eq(transfersTable.gigId, params.id))
+    .orderBy(asc(transfersTable.createdAt));
+  res.status(200).json({ items: rows });
+}
+
 const router: IRouter = Router();
 const gates = [requireAuth, requireRole("admin")] as const;
 
@@ -710,5 +1187,12 @@ router.post(
   ...gates,
   handleCreateReservationInvoice,
 );
+router.post(
+  "/admin/gigs/:id/balance-invoice",
+  ...gates,
+  handleCreateBalanceInvoice,
+);
+router.post("/admin/gigs/:id/transfers", ...gates, handleCreateTransfers);
+router.get("/admin/gigs/:id/transfers", ...gates, handleListTransfers);
 
 export default router;
