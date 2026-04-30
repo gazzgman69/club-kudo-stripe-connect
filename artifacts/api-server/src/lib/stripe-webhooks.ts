@@ -49,8 +49,13 @@ export async function dispatchV1Event(
     case "invoice.voided":
       await handleInvoiceVoided(event.data.object as Stripe.Invoice, ctx);
       break;
-    case "transfer.failed":
-      await handleTransferFailed(event.data.object as Stripe.Transfer, ctx);
+    case "transfer.reversed":
+      // Transfer was reversed (e.g. as part of a refund flow). Log for
+      // now; retry/refund handling lives in the refunds work item.
+      ctx.log.warn(
+        { eventId: event.id, transfer: (event.data.object as Stripe.Transfer).id },
+        "webhook: transfer.reversed received",
+      );
       break;
     default:
       ctx.log.info(
@@ -285,19 +290,6 @@ async function handleInvoiceVoided(
     .update(invoicesTable)
     .set({ status: "void" })
     .where(eq(invoicesTable.stripeInvoiceId, invoice.id));
-}
-
-async function handleTransferFailed(
-  transfer: Stripe.Transfer,
-  ctx: DispatchContext,
-): Promise<void> {
-  ctx.log.warn(
-    { transferId: transfer.id, amount: transfer.amount },
-    "webhook: transfer.failed received",
-  );
-  // The failure reason is in the failure_message field on V1 transfer.
-  // We don't currently persist it (out of scope for Step 9). A future
-  // pass adds retry-with-backoff using transfers.next_retry_at.
 }
 
 // ─── V2 handlers ────────────────────────────────────────────────────────────
