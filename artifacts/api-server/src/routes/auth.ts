@@ -238,9 +238,24 @@ async function handleVerifyToken(
     return;
   }
   const target = "/admin?signed_in=1";
+  // Override the global CSP for this route. The default policy
+  // (default-src 'none') would block the inline <style> and inline
+  // <script> below. We allow inline styles + inline scripts for THIS
+  // response only, and keep frame-ancestors locked down.
   res
     .status(200)
     .set("Content-Type", "text/html; charset=utf-8")
+    .set(
+      "Content-Security-Policy",
+      [
+        "default-src 'none'",
+        "style-src 'unsafe-inline'",
+        "script-src 'unsafe-inline'",
+        "frame-ancestors 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
+      ].join("; "),
+    )
     .send(`<!doctype html>
 <html lang="en">
 <head>

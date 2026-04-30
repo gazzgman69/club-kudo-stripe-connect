@@ -57,8 +57,14 @@ const repoRoot = findRepoRoot();
  *   install=1                    (off) Run `pnpm install` after pull.
  *                                Set this when package.json changed.
  *   schema=1                     (off) Run `pnpm --filter @workspace/db
- *                                run push` to apply Drizzle schema
- *                                changes to Neon.
+ *                                run push` to sync Drizzle schema to
+ *                                Neon WITHOUT versioned migrations.
+ *                                Dev only — use migrate=1 in production.
+ *   migrate=1                    (off) Run `pnpm --filter @workspace/db
+ *                                run migrate` to apply pending
+ *                                versioned SQL migrations from
+ *                                lib/db/migrations/. The production
+ *                                deploy path.
  *   seed=1                       (off) Run the admin seed script
  *                                (`@workspace/db run seed-admin`).
  *                                Idempotent — safe to re-run.
@@ -114,6 +120,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
   const force = flag("force");
   const install = flag("install");
   const schema = flag("schema");
+  const migrateFlag = flag("migrate");
   const seed = flag("seed");
   const typecheck = flag("typecheck");
   const test = flag("test");
@@ -129,6 +136,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
   );
   if (install) cmds.push("pnpm install --no-frozen-lockfile");
   if (schema) cmds.push("pnpm --filter @workspace/db run push");
+  if (migrateFlag) cmds.push("pnpm --filter @workspace/db run migrate");
   if (seed) cmds.push("pnpm --filter @workspace/db run seed-admin");
   if (typecheck) cmds.push("pnpm -w run typecheck");
   if (test) cmds.push("pnpm --filter @workspace/api-server run test");
@@ -139,7 +147,11 @@ async function handleReload(req: Request, res: Response): Promise<void> {
   // Heuristic timeouts. Cold pnpm install can take ~3 min on Replit;
   // schema push and tests are tens of seconds; plain pull should be
   // under 10s.
-  const timeoutMs = install ? 4 * 60_000 : test || schema || build ? 90_000 : 30_000;
+  const timeoutMs = install
+    ? 4 * 60_000
+    : test || schema || migrateFlag || build
+      ? 90_000
+      : 30_000;
 
   req.log.info(
     { cmd, cwd: repoRoot, timeoutMs },
@@ -165,7 +177,17 @@ async function handleReload(req: Request, res: Response): Promise<void> {
       mode: force ? "force" : "pull",
       ranAt: new Date(startedAt).toISOString(),
       durationMs: Date.now() - startedAt,
-      steps: { install, schema, seed, typecheck, test, build, restart, exit: exitAfter },
+      steps: {
+        install,
+        schema,
+        migrate: migrateFlag,
+        seed,
+        typecheck,
+        test,
+        build,
+        restart,
+        exit: exitAfter,
+      },
       stdout: stdout.trim(),
       stderr: stderr.trim() || undefined,
     });

@@ -10,6 +10,8 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts && pnpm run apply-sql",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts && pnpm run apply-sql",
+    "generate": "drizzle-kit generate --config ./drizzle.config.ts",
+    "migrate": "tsx ./scripts/migrate.ts",
     "apply-sql": "tsx ./scripts/apply-sql.ts",
     "seed-admin": "tsx ./scripts/seed-admin.ts"
   },
