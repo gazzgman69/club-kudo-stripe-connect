@@ -222,24 +222,39 @@ async function handleVerifyToken(
   req.session.userId = userId;
   req.session.userEmail = userEmail;
 
-  // Default: redirect to the admin app so email-link clicks land
-  // somewhere visible. Opt out via `?format=json` (used by the
-  // /auth-verify React splash, by tests, by curl).
+  // JSON clients (curl, tests, the React app's auth-verify splash) opt
+  // in via `?format=json`. Default for browser navigation: render a
+  // tiny HTML page that triple-redirects to /admin via meta-refresh,
+  // JS, and a click-through link. Belt-and-braces — Replit's proxy
+  // and various Accept-header quirks have made HTTP-level 302 alone
+  // unreliable.
   const wantsJson =
-    typeof req.query.format === "string"
-      ? req.query.format === "json"
-      : (req.headers.accept ?? "")
-          .toString()
-          .toLowerCase()
-          .startsWith("application/json");
-  if (!wantsJson) {
-    res.redirect(302, "/admin?signed_in=1");
+    typeof req.query.format === "string" && req.query.format === "json";
+  if (wantsJson) {
+    res.status(200).json({
+      ok: true,
+      user: { id: userId, email: userEmail },
+    });
     return;
   }
-  res.status(200).json({
-    ok: true,
-    user: { id: userId, email: userEmail },
-  });
+  const target = "/admin?signed_in=1";
+  res
+    .status(200)
+    .set("Content-Type", "text/html; charset=utf-8")
+    .send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Signing you in…</title>
+  <meta http-equiv="refresh" content="0; url=${target}">
+  <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:80px auto;padding:0 16px;color:#222;}</style>
+</head>
+<body>
+  <h1 style="font-size:18px;font-weight:600;">Signing you in…</h1>
+  <p style="font-size:14px;line-height:1.5;color:#555;">If you're not redirected automatically, <a href="${target}">click here to continue</a>.</p>
+  <script>window.location.replace(${JSON.stringify(target)});</script>
+</body>
+</html>`);
 }
 
 /**
