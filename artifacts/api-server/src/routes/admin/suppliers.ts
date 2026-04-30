@@ -393,18 +393,7 @@ async function handleCreateOnboardingLink(
   let stripeAccountId = supplier.stripeAccountId;
   if (!stripeAccountId) {
     try {
-      const v2 = (
-        stripe as unknown as {
-          v2: {
-            core: {
-              accounts: {
-                create: (args: unknown) => Promise<{ id: string }>;
-              };
-            };
-          };
-        }
-      ).v2;
-      const account = await v2.core.accounts.create({
+      const account = await stripe.v2.core.accounts.create({
         display_name: supplier.tradingName,
         contact_email: supplier.contactEmail,
         identity: { country: "gb" },
@@ -446,22 +435,28 @@ async function handleCreateOnboardingLink(
     }
   }
 
-  // V1 accountLinks still serves V2 accounts for the hosted onboarding
-  // flow; the platform passes the connected-account id in `account`.
+  // V2 account links use a different shape from V1: the destination
+  // info goes inside `use_case.account_onboarding`, and `configurations`
+  // names the V2 configurations (recipient) being onboarded for.
   const baseUrl = buildBaseUrl(req);
   let onboardingUrl: string;
   try {
-    const link = await stripe.accountLinks.create({
+    const link = await stripe.v2.core.accountLinks.create({
       account: stripeAccountId,
-      refresh_url: `${baseUrl}/api/admin/suppliers/${supplier.id}/stripe-onboarding-link`,
-      return_url: `${baseUrl}/api/admin/suppliers/${supplier.id}`,
-      type: "account_onboarding",
+      use_case: {
+        type: "account_onboarding",
+        account_onboarding: {
+          configurations: ["recipient"],
+          refresh_url: `${baseUrl}/api/admin/suppliers/${supplier.id}/stripe-onboarding-link`,
+          return_url: `${baseUrl}/api/admin/suppliers/${supplier.id}`,
+        },
+      },
     });
     onboardingUrl = link.url;
   } catch (err) {
     req.log.error(
       { err, stripeAccountId },
-      "stripe accountLinks.create failed",
+      "stripe v2 accountLinks.create failed",
     );
     return next(
       new HttpError(

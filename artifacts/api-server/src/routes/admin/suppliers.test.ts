@@ -13,10 +13,10 @@ const { dbMock, stripeMock, sendMock } = vi.hoisted(() => ({
         accounts: {
           create: vi.fn() as Mock,
         },
+        accountLinks: {
+          create: vi.fn() as Mock,
+        },
       },
-    },
-    accountLinks: {
-      create: vi.fn() as Mock,
     },
   },
   sendMock: vi.fn() as Mock,
@@ -371,7 +371,7 @@ describe("POST /admin/suppliers/:id/stripe-onboarding-link", () => {
     dbMock.update.mockReturnValue({ set });
 
     stripeMock.v2.core.accounts.create.mockResolvedValue({ id: "acct_123" });
-    stripeMock.accountLinks.create.mockResolvedValue({
+    stripeMock.v2.core.accountLinks.create.mockResolvedValue({
       url: "https://connect.stripe.com/setup/foo",
     });
     sendMock.mockResolvedValue(undefined);
@@ -390,10 +390,15 @@ describe("POST /admin/suppliers/:id/stripe-onboarding-link", () => {
         dashboard: "express",
       }),
     );
-    expect(stripeMock.accountLinks.create).toHaveBeenCalledWith(
+    expect(stripeMock.v2.core.accountLinks.create).toHaveBeenCalledWith(
       expect.objectContaining({
         account: "acct_123",
-        type: "account_onboarding",
+        use_case: expect.objectContaining({
+          type: "account_onboarding",
+          account_onboarding: expect.objectContaining({
+            configurations: ["recipient"],
+          }),
+        }),
       }),
     );
     expect(sendMock).toHaveBeenCalledWith(
@@ -425,7 +430,7 @@ describe("POST /admin/suppliers/:id/stripe-onboarding-link", () => {
         }),
       }),
     });
-    stripeMock.accountLinks.create.mockResolvedValue({
+    stripeMock.v2.core.accountLinks.create.mockResolvedValue({
       url: "https://connect.stripe.com/setup/bar",
     });
     sendMock.mockResolvedValue(undefined);
@@ -437,7 +442,7 @@ describe("POST /admin/suppliers/:id/stripe-onboarding-link", () => {
     await handleOnboarding(req as Request, res as unknown as Response, next);
 
     expect(stripeMock.v2.core.accounts.create).not.toHaveBeenCalled();
-    expect(stripeMock.accountLinks.create).toHaveBeenCalledWith(
+    expect(stripeMock.v2.core.accountLinks.create).toHaveBeenCalledWith(
       expect.objectContaining({ account: "acct_existing" }),
     );
   });
@@ -458,7 +463,7 @@ describe("POST /admin/suppliers/:id/stripe-onboarding-link", () => {
         }),
       }),
     });
-    stripeMock.accountLinks.create.mockResolvedValue({
+    stripeMock.v2.core.accountLinks.create.mockResolvedValue({
       url: "https://connect.stripe.com/setup/baz",
     });
     sendMock.mockRejectedValue(new Error("Resend down"));
