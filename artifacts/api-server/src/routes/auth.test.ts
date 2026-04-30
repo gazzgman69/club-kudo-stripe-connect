@@ -107,7 +107,10 @@ function makeReq(opts: {
     body: opts.body ?? {},
     query: opts.query ?? {},
     headers: {},
-    session: (opts.session ?? {}) as Request["session"],
+    // Real Express sessions carry methods (regenerate, destroy, save, …)
+    // that the magic-link handler doesn't touch. Cast through unknown
+    // so the test's plain object stand-in passes the type checker.
+    session: (opts.session ?? {}) as unknown as Request["session"],
     protocol: "https",
     get: vi.fn((header: string) =>
       header.toLowerCase() === "host" ? "example.test" : undefined,
