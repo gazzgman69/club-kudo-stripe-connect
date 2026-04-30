@@ -494,7 +494,7 @@ describe("POST /auth/logout", () => {
     });
     const res = makeResWithCookieClear();
 
-    await handleLogout(req as Request, res as unknown as Response);
+    await handleLogout(req as Request, res as unknown as Response, vi.fn());
 
     expect(destroy).toHaveBeenCalledOnce();
     expect(res.clearCookie).toHaveBeenCalledWith(
@@ -509,7 +509,7 @@ describe("POST /auth/logout", () => {
     const req = makeReq({ session: null });
     const res = makeResWithCookieClear();
 
-    await handleLogout(req as Request, res as unknown as Response);
+    await handleLogout(req as Request, res as unknown as Response, vi.fn());
 
     expect(res.statusCode).toBe(204);
   });
@@ -523,7 +523,7 @@ describe("POST /auth/logout", () => {
     });
     const res = makeResWithCookieClear();
 
-    await handleLogout(req as Request, res as unknown as Response);
+    await handleLogout(req as Request, res as unknown as Response, vi.fn());
 
     expect(res.statusCode).toBe(204);
     expect(req.log.warn).toHaveBeenCalled();
