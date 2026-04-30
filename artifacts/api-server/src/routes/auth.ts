@@ -222,14 +222,16 @@ async function handleVerifyToken(
   req.session.userId = userId;
   req.session.userEmail = userEmail;
 
-  // If the caller asked for an HTML response (typical browser
-  // navigation from an email link), redirect to the admin app so the
-  // user lands somewhere visible. JSON clients (curl, tests) get the
-  // current shape.
-  const wantsJson = (req.headers.accept ?? "")
-    .toString()
-    .toLowerCase()
-    .includes("application/json");
+  // Default: redirect to the admin app so email-link clicks land
+  // somewhere visible. Opt out via `?format=json` (used by the
+  // /auth-verify React splash, by tests, by curl).
+  const wantsJson =
+    typeof req.query.format === "string"
+      ? req.query.format === "json"
+      : (req.headers.accept ?? "")
+          .toString()
+          .toLowerCase()
+          .startsWith("application/json");
   if (!wantsJson) {
     res.redirect(302, "/admin?signed_in=1");
     return;
