@@ -59,6 +59,7 @@ committed file.**
 | `APP_BASE_URL`                 | Public URL used to build outbound magic-link URLs (no trailing slash). If unset, derived from the request.  | optional   | Set explicitly when frontend and API are on different origins.                  |
 | `EMAIL_FROM`                   | From-header identity for outbound transactional email. Must be at a Resend-verified domain.      | optional        | Defaults to `Club Kudo <noreply@bookings.clubkudo.com>`.                        |
 | `EMAIL_REPLY_TO`               | Reply-To header for outbound transactional email. Set if you want replies to land in an inbox.   | optional        | E.g. `bookings@clubkudo.com`. Leave unset to omit the header.                   |
+| `STRIPE_SECRET_KEY`            | Server-side API key for Stripe Connect V2. Endpoints needing it return 503 when unset.           | optional → required for Phase 6 onwards | Stripe Dashboard → Developers → API keys. Use `sk_test_…` until live mode. |
 
 ### Future env vars (not yet validated in `env.ts`)
 

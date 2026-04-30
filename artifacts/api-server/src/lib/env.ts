@@ -65,6 +65,11 @@ const envSchema = z.object({
     .default("Club Kudo <noreply@bookings.clubkudo.com>"),
   // Optional Reply-To. Leave unset to omit the header entirely.
   EMAIL_REPLY_TO: z.string().optional(),
+
+  // Stripe Connect (Phase 1 Step 6 onwards). Optional at startup so
+  // the server still boots if Stripe isn't configured yet — endpoints
+  // that need it return 503 when missing.
+  STRIPE_SECRET_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

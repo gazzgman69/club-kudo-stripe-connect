@@ -22,6 +22,8 @@ import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import router from "./routes";
 import adminRouter from "./routes/admin";
 import authRouter from "./routes/auth";
+import suppliersRouter from "./routes/admin/suppliers";
+import { requireAuth, requireRole } from "./middlewares/auth";
 
 export async function buildApp(): Promise<Express> {
   const env = getEnv();
@@ -126,6 +128,16 @@ export async function buildApp(): Promise<Express> {
   // been seen within the TTL. Mounted AFTER csrfProtection so failed CSRF
   // requests don't waste a DB lookup.
   app.use("/api", idempotencyMiddleware);
+
+  // Admin: suppliers (Phase 1 Step 6). Behind requireAuth +
+  // requireRole("admin"), so all the auth/csrf/idempotency gates
+  // already applied above must succeed first.
+  app.use(
+    "/api/admin/suppliers",
+    requireAuth,
+    requireRole("admin"),
+    suppliersRouter,
+  );
 
   app.use("/api", router);
 
