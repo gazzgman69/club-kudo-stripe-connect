@@ -4,6 +4,8 @@ import {
   text,
   timestamp,
   jsonb,
+  integer,
+  boolean,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -31,6 +33,13 @@ export const suppliersTable = pgTable(
       .notNull()
       .default("pending"),
     stripeCapabilitiesJson: jsonb("stripe_capabilities_json"),
+    // VAT status of the supplier as a tax entity. Drives the default
+    // `vat_rate_bps` on any gig line item this supplier appears on.
+    // The line item itself stores its rate at creation time so a
+    // supplier later changing their VAT status doesn't retroactively
+    // rewrite invoiced lines.
+    vatRegistered: boolean("vat_registered").notNull().default(false),
+    vatRateBps: integer("vat_rate_bps").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

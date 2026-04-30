@@ -71,3 +71,8 @@ export const reconciliationStatusEnum = pgEnum("reconciliation_status", [
   "failed",
   "needs_review",
 ]);
+
+export const invoicePhaseEnum = pgEnum("invoice_phase", [
+  "reservation",
+  "balance",
+]);

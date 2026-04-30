@@ -11,6 +11,10 @@ export const clientsTable = pgTable("clients", {
   addressLines: text("address_lines").array(),
   postcode: text("postcode"),
   notes: text("notes"),
+  // Stripe Customer id for Invoicing reuse. One Stripe Customer per
+  // clients row, persisted here on first invoice creation. Keeps
+  // Stripe records tidy across repeat bookings.
+  stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

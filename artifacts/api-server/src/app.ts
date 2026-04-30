@@ -23,6 +23,9 @@ import router from "./routes";
 import adminRouter from "./routes/admin";
 import authRouter from "./routes/auth";
 import suppliersRouter from "./routes/admin/suppliers";
+import clientsRouter from "./routes/admin/clients";
+import gigsRouter from "./routes/admin/gigs";
+import platformSettingsRouter from "./routes/admin/platform-settings";
 
 export async function buildApp(): Promise<Express> {
   const env = getEnv();
@@ -128,11 +131,14 @@ export async function buildApp(): Promise<Express> {
   // requests don't waste a DB lookup.
   app.use("/api", idempotencyMiddleware);
 
-  // Admin: suppliers (Phase 1 Step 6). Mounted at /api; the router
-  // applies requireAuth + requireRole("admin") internally, and uses
-  // absolute paths (/admin/suppliers/*) matching the adminRouter
-  // pattern.
+  // Admin: suppliers (Phase 1 Step 6) + clients + gigs + platform
+  // settings (Phase 1 Step 7). All routers mount at /api with
+  // absolute paths internally and apply requireAuth + requireRole
+  // inline per-route.
   app.use("/api", suppliersRouter);
+  app.use("/api", clientsRouter);
+  app.use("/api", gigsRouter);
+  app.use("/api", platformSettingsRouter);
 
   app.use("/api", router);
 

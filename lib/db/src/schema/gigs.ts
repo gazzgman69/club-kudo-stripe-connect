@@ -15,7 +15,7 @@ import { z } from "zod/v4";
 import { usersTable } from "./users";
 import { clientsTable } from "./clients";
 import { suppliersTable } from "./suppliers";
-import { gigStatusEnum, gigLineTypeEnum } from "./enums";
+import { gigStatusEnum, gigLineTypeEnum, invoicePhaseEnum } from "./enums";
 
 export const gigsTable = pgTable(
   "gigs",
@@ -84,6 +84,12 @@ export const gigLineItemsTable = pgTable(
         sql`(amount_pence + (amount_pence * vat_rate_bps / 10000))`,
       ),
     isPlatformLine: boolean("is_platform_line").notNull().default(false),
+    // Which invoice this line goes on. Default 'balance' so most
+    // supplier lines fall through naturally; reservation-fee and any
+    // upfront supplier deposits get explicitly set to 'reservation'.
+    invoicePhase: invoicePhaseEnum("invoice_phase")
+      .notNull()
+      .default("balance"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -95,6 +101,7 @@ export const gigLineItemsTable = pgTable(
   (table) => [
     index("gig_line_items_gig_id_idx").on(table.gigId),
     index("gig_line_items_supplier_id_idx").on(table.supplierId),
+    index("gig_line_items_invoice_phase_idx").on(table.invoicePhase),
     check("gig_line_items_amount_positive", sql`amount_pence > 0`),
     check(
       "gig_line_items_platform_line_supplier_xor",

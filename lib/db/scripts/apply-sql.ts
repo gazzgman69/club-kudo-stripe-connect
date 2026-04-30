@@ -8,7 +8,10 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set");
 }
 
-const sqlFiles = ["audit_log_append_only.sql"];
+const sqlFiles = [
+  "audit_log_append_only.sql",
+  "platform_settings_seed.sql",
+];
 
 async function main() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });

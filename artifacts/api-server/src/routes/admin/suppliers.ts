@@ -26,6 +26,8 @@ const createSupplierSchema = z.object({
   contactEmail: z.string().email().toLowerCase().trim(),
   instrument: z.array(z.string().min(1)).max(20).optional(),
   bio: z.string().max(2000).optional(),
+  vatRegistered: z.boolean().optional().default(false),
+  vatRateBps: z.number().int().min(0).max(10000).optional().default(0),
 });
 
 const updateSupplierSchema = z.object({
@@ -33,6 +35,8 @@ const updateSupplierSchema = z.object({
   contactEmail: z.string().email().toLowerCase().trim().optional(),
   instrument: z.array(z.string().min(1)).max(20).optional(),
   bio: z.string().max(2000).optional(),
+  vatRegistered: z.boolean().optional(),
+  vatRateBps: z.number().int().min(0).max(10000).optional(),
 });
 
 const idParamSchema = z.object({
@@ -151,6 +155,8 @@ async function handleCreateSupplier(
         contactEmail: body.contactEmail,
         instrument: body.instrument ?? null,
         bio: body.bio ?? null,
+        vatRegistered: body.vatRegistered,
+        vatRateBps: body.vatRateBps,
       })
       .returning();
 
@@ -273,6 +279,10 @@ async function handleUpdateSupplier(
         : {}),
       ...(body.instrument !== undefined ? { instrument: body.instrument } : {}),
       ...(body.bio !== undefined ? { bio: body.bio } : {}),
+      ...(body.vatRegistered !== undefined
+        ? { vatRegistered: body.vatRegistered }
+        : {}),
+      ...(body.vatRateBps !== undefined ? { vatRateBps: body.vatRateBps } : {}),
     })
     .where(
       and(

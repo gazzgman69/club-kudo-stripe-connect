@@ -11,3 +11,4 @@ export * from "./refunds";
 export * from "./disputes";
 export * from "./reconciliation";
 export * from "./idempotency_replay";
+export * from "./platform_settings";
