@@ -106,16 +106,10 @@ export async function handleStripeWebhook(
   res.status(200).json({ received: true });
 }
 
-// Absolute path inside the router, mounted at "/" in app.ts. This
-// matches the working pattern used by adminRouter, authRouter,
-// suppliersRouter, etc. and avoids the Express 5 trailing-slash gotcha
-// where router.post("/") doesn't match a request whose URL was the
-// router's mount prefix exactly.
-export const stripeWebhookRouter: express.Router = express.Router();
-stripeWebhookRouter.post(
-  "/api/webhooks/stripe",
-  express.raw({ type: "application/json", limit: "1mb" }),
-  handleStripeWebhook,
-);
-
-export default stripeWebhookRouter;
+// Export the raw body parser middleware and the handler so app.ts
+// can register them directly with app.post() — avoids Express 5's
+// router-mounting trailing-slash trap entirely.
+export const stripeWebhookRawParser = express.raw({
+  type: "application/json",
+  limit: "1mb",
+});
