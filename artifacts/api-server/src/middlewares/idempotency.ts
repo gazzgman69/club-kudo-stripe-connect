@@ -3,7 +3,6 @@ import type {
   Response,
   NextFunction,
   RequestHandler,
-  Send,
 } from "express";
 import { and, eq, gt } from "drizzle-orm";
 import { db, idempotencyReplayTable } from "@workspace/db";
@@ -142,7 +141,7 @@ export const idempotencyMiddleware: RequestHandler = async (
   res.send = function (body: unknown): Response {
     if (!captured) captured = { statusCode: res.statusCode, body };
     return originalSend(body);
-  } as Send<unknown, Response>;
+  } as Response["send"];
 
   res.on("finish", () => {
     if (!captured) return;
