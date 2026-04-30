@@ -16,6 +16,7 @@ import { idempotencyMiddleware } from "./middlewares/idempotency";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 
 import router from "./routes";
+import adminRouter from "./routes/admin";
 
 export async function buildApp(): Promise<Express> {
   const env = getEnv();
@@ -84,6 +85,12 @@ export async function buildApp(): Promise<Express> {
 
   app.use("/api", express.json({ limit: "1mb" }));
   app.use("/api", express.urlencoded({ extended: true, limit: "1mb" }));
+
+  // Admin reload endpoint (server-to-server, secret-gated). Mounted
+  // BEFORE CSRF and idempotency because it is called by curl from
+  // outside the browser session — no CSRF token, no Idempotency-Key.
+  // Auth is via the RELOAD_SECRET env var checked inside the handler.
+  app.use("/api", adminRouter);
 
   // CSRF: double-submit cookie pattern. Auto-bypasses GET/HEAD/OPTIONS,
   // so /api/healthz and /api/csrf-token (both GET) work without a token.

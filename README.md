@@ -54,6 +54,7 @@ committed file.**
 | `RATE_LIMIT_WINDOW_MS`         | Rate-limit window in ms                                                                          | optional        | Defaults to `60000` (1 minute)                                                  |
 | `RATE_LIMIT_MAX`               | Max requests per IP per window                                                                   | optional        | Defaults to `100`                                                               |
 | `COOKIE_DOMAIN`                | Cookie `Domain` attribute. Leave unset for host-only cookies.                                    | optional (prod) | Set if frontend and API are on different subdomains of the same parent domain   |
+| `RELOAD_SECRET`                | Auth secret for the `/api/admin/reload` endpoint. Without this set, the endpoint returns 503.    | optional        | Generate with `openssl rand -hex 32`. Set in Replit Secrets.                    |
 
 ### Future env vars (not yet validated in `env.ts`)
 
@@ -86,6 +87,27 @@ pnpm -w run typecheck                      # workspace-wide TS typecheck
 pnpm --filter @workspace/api-spec run codegen   # regen + typecheck
 pnpm --filter @workspace/db run push       # ensure DB schema is current
 ```
+
+## Cowork reload endpoint
+
+`POST /api/admin/reload` lets a Cowork session sync the running Replit
+instance after pushing to GitHub. Auth is via the `RELOAD_SECRET` env
+var (set in Replit Secrets). Without it, the endpoint returns 503.
+
+```bash
+# Code-only change, run tests after pulling:
+curl "$REPL_URL/api/admin/reload?key=$RELOAD_SECRET&test=1"
+
+# New dependency + schema change + full deploy:
+curl "$REPL_URL/api/admin/reload?key=$RELOAD_SECRET&install=1&schema=1&build=1&restart=1"
+
+# Working tree drifted, force-reset to origin/main:
+curl "$REPL_URL/api/admin/reload?key=$RELOAD_SECRET&force=1"
+```
+
+Query params: `force`, `install`, `schema`, `typecheck`, `test`,
+`build`, `restart`. See `artifacts/api-server/src/routes/admin.ts` for
+the full contract.
 
 ## Documentation
 
