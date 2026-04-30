@@ -7,7 +7,6 @@ import {
 } from "express";
 import { z } from "zod";
 import { eq, and, isNull, desc, sql, asc } from "drizzle-orm";
-import crypto from "node:crypto";
 import {
   db,
   clientsTable,
@@ -15,10 +14,10 @@ import {
   gigLineItemsTable,
   invoicesTable,
   platformSettingsTable,
-  suppliersTable,
   transfersTable,
 } from "@workspace/db";
 import { getStripe } from "../../lib/stripe";
+import { createTransfersForGig } from "../../lib/transfer-service";
 import { HttpError } from "../../middlewares/errorHandler";
 import { requireAuth, requireRole } from "../../middlewares/auth";
 
@@ -944,194 +943,35 @@ async function handleCreateTransfers(
   } catch (err) {
     return next(err);
   }
-  const stripe = getStripe();
 
-  // Verify gig + load all paid invoices for it.
-  const gigRows = await db
-    .select()
-    .from(gigsTable)
-    .where(and(eq(gigsTable.id, params.id), isNull(gigsTable.deletedAt)))
-    .limit(1);
-  if (gigRows.length === 0) {
-    return next(new HttpError(404, "gig_not_found", "Gig not found"));
-  }
-  const gig = gigRows[0];
-
-  const invoicesForGig = await db
-    .select()
-    .from(invoicesTable)
-    .where(eq(invoicesTable.gigId, gig.id));
-  const paidWithCharge = invoicesForGig.filter(
-    (inv) => inv.stripeChargeId && inv.status !== "void",
-  );
-  if (paidWithCharge.length === 0) {
-    return next(
-      new HttpError(
-        400,
-        "no_paid_invoices",
-        "Cannot create transfers — no invoice on this gig has a captured Stripe charge yet",
-      ),
-    );
-  }
-
-  // Map invoice_phase → stripe_charge_id for the transfer source.
-  const chargeByPhase: Record<string, string> = {};
-  for (const inv of paidWithCharge) {
-    if (inv.stripeChargeId) {
-      chargeByPhase[inv.invoiceType === "reservation" ? "reservation" : "balance"] =
-        inv.stripeChargeId;
+  const result = await createTransfersForGig(params.id, { log: req.log });
+  if (!result.ok) {
+    if (result.reason === "gig_not_found") {
+      return next(new HttpError(404, "gig_not_found", "Gig not found"));
     }
-  }
-
-  const settingsRows = await db
-    .select()
-    .from(platformSettingsTable)
-    .where(eq(platformSettingsTable.id, "singleton"))
-    .limit(1);
-  if (settingsRows.length === 0) {
-    return next(
-      new HttpError(
-        500,
-        "platform_settings_missing",
-        "platform_settings singleton row not found",
-      ),
-    );
-  }
-  const settings = settingsRows[0];
-
-  // Pull all supplier line items joined with supplier rows. Skip
-  // platform lines (they're Club Kudo's revenue, no transfer).
-  const lineRows = await db
-    .select({
-      lineItem: gigLineItemsTable,
-      supplier: suppliersTable,
-    })
-    .from(gigLineItemsTable)
-    .innerJoin(
-      suppliersTable,
-      eq(suppliersTable.id, gigLineItemsTable.supplierId),
-    )
-    .where(
-      and(
-        eq(gigLineItemsTable.gigId, gig.id),
-        eq(gigLineItemsTable.isPlatformLine, false),
-      ),
-    );
-
-  // Index existing transfers by gig_line_item_id for idempotency.
-  const existingTransfers = await db
-    .select()
-    .from(transfersTable)
-    .where(eq(transfersTable.gigId, gig.id));
-  const existingByLineId = new Map<string, typeof transfersTable.$inferSelect>(
-    existingTransfers.map((t) => [t.gigLineItemId, t]),
-  );
-
-  interface TransferResult {
-    transfer: typeof transfersTable.$inferSelect;
-    skipped?: boolean;
-  }
-
-  const results: TransferResult[] = [];
-  for (const { lineItem: li, supplier } of lineRows) {
-    if (existingByLineId.has(li.id)) {
-      const existing = existingByLineId.get(li.id);
-      if (existing) results.push({ transfer: existing, skipped: true });
-      continue;
-    }
-
-    const sourceCharge = chargeByPhase[li.invoicePhase];
-    if (!sourceCharge) {
-      // The invoice this line belongs to hasn't been paid yet —
-      // skip silently. A future call can pick it up once it is.
-      continue;
-    }
-
-    // Gross amount: amount_pence + VAT. The supplier is the merchant
-    // for tax purposes, so they receive the full gross and remit
-    // their own VAT (or none, if not registered).
-    const grossPence = Math.round(
-      (li.amountPence * (10000 + li.vatRateBps)) / 10000,
-    );
-    const idempKey = `transfer-${li.id}-${crypto.randomUUID()}`;
-
-    if (!supplier.stripeAccountId) {
-      const [inserted] = await db
-        .insert(transfersTable)
-        .values({
-          gigId: gig.id,
-          gigLineItemId: li.id,
-          supplierId: supplier.id,
-          stripeChargeId: sourceCharge,
-          amountPence: grossPence,
-          currency: settings.currency,
-          status: "failed",
-          failureReason: "supplier_not_onboarded",
-          stripeIdempotencyKey: idempKey,
-        })
-        .returning();
-      results.push({ transfer: inserted });
-      continue;
-    }
-
-    try {
-      const transfer = await stripe.transfers.create(
-        {
-          amount: grossPence,
-          currency: settings.currency,
-          destination: supplier.stripeAccountId,
-          source_transaction: sourceCharge,
-          transfer_group: gig.id,
-          metadata: {
-            gigId: gig.id,
-            gigLineItemId: li.id,
-            supplierId: supplier.id,
-            invoicePhase: li.invoicePhase,
-          },
-        },
-        { idempotencyKey: idempKey },
+    if (result.reason === "no_paid_invoices") {
+      return next(
+        new HttpError(
+          400,
+          "no_paid_invoices",
+          "Cannot create transfers — no invoice on this gig has a captured Stripe charge yet",
+        ),
       );
-
-      const [inserted] = await db
-        .insert(transfersTable)
-        .values({
-          gigId: gig.id,
-          gigLineItemId: li.id,
-          supplierId: supplier.id,
-          stripeTransferId: transfer.id,
-          stripeChargeId: sourceCharge,
-          amountPence: grossPence,
-          currency: settings.currency,
-          status: "created",
-          stripeIdempotencyKey: idempKey,
-        })
-        .returning();
-      results.push({ transfer: inserted });
-    } catch (err) {
-      req.log.error(
-        { err, lineItemId: li.id, supplierId: supplier.id },
-        "stripe transfers.create failed",
-      );
-      const [inserted] = await db
-        .insert(transfersTable)
-        .values({
-          gigId: gig.id,
-          gigLineItemId: li.id,
-          supplierId: supplier.id,
-          stripeChargeId: sourceCharge,
-          amountPence: grossPence,
-          currency: settings.currency,
-          status: "failed",
-          failureReason: ((err as Error).message ?? "unknown").slice(0, 500),
-          stripeIdempotencyKey: idempKey,
-        })
-        .returning();
-      results.push({ transfer: inserted });
     }
+    if (result.reason === "settings_missing") {
+      return next(
+        new HttpError(
+          500,
+          "platform_settings_missing",
+          "platform_settings singleton row not found",
+        ),
+      );
+    }
+    return next(new HttpError(500, "unknown", "Unexpected failure"));
   }
 
   res.status(200).json({
-    transfers: results.map((r) => ({
+    transfers: (result.transfers ?? []).map((r) => ({
       ...r.transfer,
       ...(r.skipped ? { skipped: true } : {}),
     })),

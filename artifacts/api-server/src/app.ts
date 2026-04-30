@@ -26,6 +26,7 @@ import suppliersRouter from "./routes/admin/suppliers";
 import clientsRouter from "./routes/admin/clients";
 import gigsRouter from "./routes/admin/gigs";
 import platformSettingsRouter from "./routes/admin/platform-settings";
+import stripeWebhookRouter from "./routes/webhooks/stripe";
 
 export async function buildApp(): Promise<Express> {
   const env = getEnv();
@@ -69,28 +70,16 @@ export async function buildApp(): Promise<Express> {
   // 6. Sessions (Redis-backed)
   app.use(await buildSessionMiddleware());
 
+  // ─── Stripe webhooks (Phase 1 Step 9) ───
+  // Mounted BEFORE the global rate limiter (Stripe burst traffic mustn't
+  // be throttled), BEFORE the global JSON parser (signature verification
+  // needs raw bytes — the route's express.raw middleware does this
+  // route-locally), and BEFORE csrfProtection (Stripe is
+  // server-to-server, the webhook signature IS the auth).
+  app.use("/api/webhooks/stripe", stripeWebhookRouter);
+
   // 7. Global rate limit (Redis-backed) — applied AFTER session so it can key by user later
   app.use(await buildGlobalRateLimiter());
-
-  // ─── Stripe webhooks: ALL FOUR constraints below MUST hold (Phase 1 Step 9) ───
-  // 1. Mounted BEFORE the global JSON body parser below — Stripe signature
-  //    verification needs the untouched raw bytes; any prior parsing breaks it.
-  // 2. The route handler must use `express.raw({ type: "application/json" })`
-  //    at the route level so only this endpoint sees raw bytes.
-  // 3. Must be mounted BEFORE `csrfProtection` — Stripe is server-to-server
-  //    and never sends a CSRF token; the webhook signature IS the auth.
-  // 4. Must NOT inherit the global rate limiter — Stripe can burst hundreds
-  //    of events. Mount `/api/webhooks` BEFORE the global limiter, OR apply
-  //    a dedicated webhook limiter sized for Stripe's traffic profile.
-  //
-  // Example wiring (Step 9):
-  //   app.use("/api/webhooks/stripe",
-  //     express.raw({ type: "application/json" }),
-  //     stripeWebhookRouter);
-  //
-  // Currently the global rate limiter IS mounted above this point, so when
-  // Step 9 adds the webhook router it must be moved above the rate limiter
-  // (and the Step 9 PR description must call this out).
 
   app.use("/api", express.json({ limit: "1mb" }));
   app.use("/api", express.urlencoded({ extended: true, limit: "1mb" }));

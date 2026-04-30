@@ -60,6 +60,7 @@ committed file.**
 | `EMAIL_FROM`                   | From-header identity for outbound transactional email. Must be at a Resend-verified domain.      | optional        | Defaults to `Club Kudo <noreply@bookings.clubkudo.com>`.                        |
 | `EMAIL_REPLY_TO`               | Reply-To header for outbound transactional email. Set if you want replies to land in an inbox.   | optional        | E.g. `bookings@clubkudo.com`. Leave unset to omit the header.                   |
 | `STRIPE_SECRET_KEY`            | Server-side API key for Stripe Connect V2. Endpoints needing it return 503 when unset.           | optional → required for Phase 6 onwards | Stripe Dashboard → Developers → API keys. Use `sk_test_…` until live mode. |
+| `STRIPE_WEBHOOK_SECRET`        | Signing secret for `/api/webhooks/stripe`. The endpoint returns 503 when unset.                  | required for Phase 9 onwards | Stripe Dashboard → Developers → Webhooks → endpoint signing secret. Same secret handles both V1 events and V2 thin events. |
 
 ### Future env vars (not yet validated in `env.ts`)
 

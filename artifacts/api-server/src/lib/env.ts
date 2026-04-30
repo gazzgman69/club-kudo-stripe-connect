@@ -70,6 +70,11 @@ const envSchema = z.object({
   // the server still boots if Stripe isn't configured yet — endpoints
   // that need it return 503 when missing.
   STRIPE_SECRET_KEY: z.string().optional(),
+  // Webhook signing secret for /api/webhooks/stripe (Phase 1 Step 9).
+  // Optional at startup; the webhook route 503s without it. One
+  // secret is shared between V1 webhook events (account-level) and
+  // V2 thin events (Connect-level) — Stripe normalises this.
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
