@@ -2,12 +2,15 @@ import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
 // Mock the workspace DB module BEFORE importing the middleware. vi.mock
-// is hoisted by vitest, so the module under test sees the mock and never
-// triggers @workspace/db's DATABASE_URL check.
-const dbMock: { select: Mock; insert: Mock } = {
-  select: vi.fn(),
-  insert: vi.fn(),
-};
+// is hoisted by vitest, so its factory runs before any top-level
+// `const`. Lift the shared mock object via vi.hoisted so the same
+// reference is visible to both the factory and the test bodies.
+const { dbMock } = vi.hoisted(() => ({
+  dbMock: {
+    select: vi.fn() as Mock,
+    insert: vi.fn() as Mock,
+  },
+}));
 
 vi.mock("@workspace/db", () => ({
   db: dbMock,
