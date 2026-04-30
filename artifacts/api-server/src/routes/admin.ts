@@ -162,13 +162,29 @@ async function handleReload(req: Request, res: Response): Promise<void> {
       stderr: stderr.trim() || undefined,
     });
 
-    if (restart) {
-      // Defer briefly so the response actually flushes before the
-      // process exits. Replit's workflow supervisor respawns the
-      // process; the next start runs `pnpm run build && pnpm run start`
-      // (see api-server package.json `dev` script) which picks up the
-      // newly-pulled code.
-      setTimeout(() => process.exit(0), 500);
+    // After a successful build (or an explicit restart=1), trigger a
+    // restart so the new dist/index.mjs gets loaded into a fresh
+    // process. Preferred path: SIGUSR2 to our parent process (nodemon
+    // catches it and respawns cleanly, preserving the parent watcher).
+    // Fallback: process.exit(0) for non-nodemon supervisors.
+    if (build || restart) {
+      // Defer briefly so the response flushes before the process dies.
+      setTimeout(() => {
+        try {
+          if (process.ppid && process.ppid !== 1) {
+            process.kill(process.ppid, "SIGUSR2");
+            return;
+          }
+        } catch (sigErr) {
+          // Fall through to process.exit if signal delivery failed
+          // (e.g. parent died, or doesn't accept SIGUSR2).
+          req.log?.warn(
+            { err: sigErr, ppid: process.ppid },
+            "admin reload: SIGUSR2 to parent failed; exiting instead",
+          );
+        }
+        process.exit(0);
+      }, 500);
     }
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; message?: string };
