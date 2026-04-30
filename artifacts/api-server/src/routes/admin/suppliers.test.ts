@@ -84,9 +84,13 @@ function findHandler(method: "post" | "get" | "patch" | "delete", path: string) 
       route?: { path: string; stack: { method: string; handle: unknown }[] };
     };
     if (l.route && l.route.path === path) {
-      const found = l.route.stack.find((s) => s.method === method);
-      if (found) {
-        return found.handle as (
+      // A route with inline auth gates has the actual handler as the
+      // LAST entry in the route stack (after requireAuth + requireRole).
+      // Grab the final handle for this method, not the first.
+      const matches = l.route.stack.filter((s) => s.method === method);
+      const last = matches[matches.length - 1];
+      if (last) {
+        return last.handle as (
           req: Request,
           res: Response,
           next: NextFunction,
