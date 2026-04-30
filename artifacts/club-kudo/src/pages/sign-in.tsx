@@ -21,8 +21,25 @@ export default function SignInPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
-    await requestLink.mutateAsync(email.trim());
-    setSubmitted(true);
+    try {
+      await requestLink.mutateAsync(email.trim());
+      setSubmitted(true);
+    } catch {
+      // useMutation already exposes the error via requestLink.error /
+      // .isError; the JSX below renders a contextual message. Catch
+      // here so the rejection doesn't reach Vite's runtime overlay.
+    }
+  }
+
+  function errorMessage(): string | null {
+    if (!requestLink.isError) return null;
+    const err = requestLink.error as
+      | { status?: number; code?: string; message?: string }
+      | undefined;
+    if (err?.status === 429) {
+      return "Too many sign-in attempts. Try again in 15 minutes, or use a different email.";
+    }
+    return "Couldn't send the sign-in link. Try again in a moment.";
   }
 
   return (
@@ -66,9 +83,7 @@ export default function SignInPage() {
                 />
               </div>
               {requestLink.isError ? (
-                <p className="text-sm text-red-600">
-                  Couldn't send the sign-in link. Try again in a moment.
-                </p>
+                <p className="text-sm text-red-600">{errorMessage()}</p>
               ) : null}
               <Button
                 type="submit"
