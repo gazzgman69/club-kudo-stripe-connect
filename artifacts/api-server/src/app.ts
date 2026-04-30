@@ -12,6 +12,7 @@ import { corsMiddleware } from "./middlewares/cors";
 import { buildSessionMiddleware } from "./middlewares/session";
 import { buildGlobalRateLimiter } from "./middlewares/rateLimit";
 import { csrfProtection } from "./middlewares/csrf";
+import { idempotencyMiddleware } from "./middlewares/idempotency";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 
 import router from "./routes";
@@ -88,6 +89,12 @@ export async function buildApp(): Promise<Express> {
   // so /api/healthz and /api/csrf-token (both GET) work without a token.
   // Every state-changing request must echo the token via x-csrf-token header.
   app.use("/api", csrfProtection);
+
+  // Idempotency: on POST/PATCH/DELETE, requires a UUID v4 Idempotency-Key
+  // header. Replays the cached 2xx response if the same key+path+user has
+  // been seen within the TTL. Mounted AFTER csrfProtection so failed CSRF
+  // requests don't waste a DB lookup.
+  app.use("/api", idempotencyMiddleware);
 
   app.use("/api", router);
 
