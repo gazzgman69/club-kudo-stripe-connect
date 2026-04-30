@@ -7,17 +7,31 @@ import {
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const execAsync = promisify(exec);
 
-// Repo root, resolved from this file's location at runtime. The build
-// emits dist/index.mjs at artifacts/api-server/dist/, so we walk up
-// three levels to reach the monorepo root where pnpm-workspace.yaml lives.
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
+// Resolve the monorepo root by walking up from this file's directory
+// until we find pnpm-workspace.yaml. Hard-coded `../..` style paths
+// would break across dev (src/routes/admin.ts) vs bundled
+// (dist/index.mjs) layouts.
+function findRepoRoot(): string {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(path.join(dir, "pnpm-workspace.yaml"))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Last-resort fallback. The Replit workflow runs from
+  // artifacts/api-server, so go up two from there.
+  return path.resolve(process.cwd(), "../..");
+}
+
+const repoRoot = findRepoRoot();
 
 /**
  * /api/admin/reload — server-to-server git-pull-and-rebuild endpoint.
@@ -109,9 +123,15 @@ async function handleReload(req: Request, res: Response): Promise<void> {
 
   const cmd = cmds.join(" && ");
 
-  // Heuristic timeouts. Cold pnpm install can take ~2 min on Replit;
-  // schema push, build, and tests are typically tens of seconds.
-  const timeoutMs = install ? 4 * 60_000 : 2 * 60_000;
+  // Heuristic timeouts. Cold pnpm install can take ~3 min on Replit;
+  // schema push and tests are tens of seconds; plain pull should be
+  // under 10s.
+  const timeoutMs = install ? 4 * 60_000 : test || schema || build ? 90_000 : 30_000;
+
+  req.log.info(
+    { cmd, cwd: repoRoot, timeoutMs },
+    "admin reload: starting exec",
+  );
 
   const startedAt = Date.now();
   try {
@@ -121,6 +141,11 @@ async function handleReload(req: Request, res: Response): Promise<void> {
       maxBuffer: 10 * 1024 * 1024,
       env: { ...process.env },
     });
+
+    req.log.info(
+      { durationMs: Date.now() - startedAt, stderrLen: stderr.length },
+      "admin reload: exec completed",
+    );
 
     res.json({
       ok: true,
@@ -142,6 +167,10 @@ async function handleReload(req: Request, res: Response): Promise<void> {
     }
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; message?: string };
+    req.log.error(
+      { err: e.message, durationMs: Date.now() - startedAt, cmd },
+      "admin reload: exec failed",
+    );
     res.status(500).json({
       ok: false,
       cmd,
