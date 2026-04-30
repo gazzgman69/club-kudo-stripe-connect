@@ -525,22 +525,29 @@ async function handleGetStripeStatus(
 
 const router: IRouter = Router();
 
-// Apply auth gates to every route in this router. Mounted at /api in
-// app.ts; the absolute paths below give /api/admin/suppliers/* on
-// the wire. This matches the existing adminRouter pattern (which
-// also uses absolute paths internally) and side-steps Express 5's
-// path-to-regexp behaviour around mounted routers + root paths.
-router.use(requireAuth, requireRole("admin"));
+// Apply requireAuth + requireRole inline on each route. A bare
+// router.use(requireAuth, ...) at the top would gate every request
+// that enters this router (including ones that don't match any of
+// its routes), which makes Express never fall through to the next
+// router — that breaks unrelated paths like /api/healthz. Inline
+// per-route is verbose but unambiguous: gates apply only when the
+// path actually matches.
+const gates = [requireAuth, requireRole("admin")] as const;
 
-router.post("/admin/suppliers", handleCreateSupplier);
-router.get("/admin/suppliers", handleListSuppliers);
-router.get("/admin/suppliers/:id", handleGetSupplier);
-router.patch("/admin/suppliers/:id", handleUpdateSupplier);
-router.delete("/admin/suppliers/:id", handleDeleteSupplier);
+router.post("/admin/suppliers", ...gates, handleCreateSupplier);
+router.get("/admin/suppliers", ...gates, handleListSuppliers);
+router.get("/admin/suppliers/:id", ...gates, handleGetSupplier);
+router.patch("/admin/suppliers/:id", ...gates, handleUpdateSupplier);
+router.delete("/admin/suppliers/:id", ...gates, handleDeleteSupplier);
 router.post(
   "/admin/suppliers/:id/stripe-onboarding-link",
+  ...gates,
   handleCreateOnboardingLink,
 );
-router.get("/admin/suppliers/:id/stripe-status", handleGetStripeStatus);
+router.get(
+  "/admin/suppliers/:id/stripe-status",
+  ...gates,
+  handleGetStripeStatus,
+);
 
 export default router;
