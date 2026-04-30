@@ -28,16 +28,15 @@ export function AdminShell({ children }: { children: ReactNode }) {
               <Link href="/admin" className="hover:text-gray-900">
                 Home
               </Link>
-              {/* Step 10b will replace these stubs with real screens. */}
-              <span className="text-gray-300 cursor-not-allowed" title="Coming in Step 10b">
+              <Link href="/admin/suppliers" className="hover:text-gray-900">
                 Suppliers
-              </span>
-              <span className="text-gray-300 cursor-not-allowed" title="Coming in Step 10b">
+              </Link>
+              <Link href="/admin/clients" className="hover:text-gray-900">
                 Clients
-              </span>
-              <span className="text-gray-300 cursor-not-allowed" title="Coming in Step 10b">
+              </Link>
+              <Link href="/admin/gigs" className="hover:text-gray-900">
                 Gigs
-              </span>
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
