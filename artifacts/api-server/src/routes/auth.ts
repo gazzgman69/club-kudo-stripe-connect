@@ -222,6 +222,18 @@ async function handleVerifyToken(
   req.session.userId = userId;
   req.session.userEmail = userEmail;
 
+  // If the caller asked for an HTML response (typical browser
+  // navigation from an email link), redirect to the admin app so the
+  // user lands somewhere visible. JSON clients (curl, tests) get the
+  // current shape.
+  const wantsJson = (req.headers.accept ?? "")
+    .toString()
+    .toLowerCase()
+    .includes("application/json");
+  if (!wantsJson) {
+    res.redirect(302, "/admin?signed_in=1");
+    return;
+  }
   res.status(200).json({
     ok: true,
     user: { id: userId, email: userEmail },

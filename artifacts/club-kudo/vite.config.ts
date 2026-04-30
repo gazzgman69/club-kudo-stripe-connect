@@ -66,6 +66,19 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    // Proxy /api requests to the api-server in dev so the frontend
+    // and API appear to share an origin. That makes session cookies
+    // (sameSite=lax) work without CORS gymnastics. The api-server
+    // listens on PORT 8080 by default per its package.json start
+    // script. Override with API_TARGET env var if needed.
+    proxy: {
+      "/api": {
+        target: process.env.API_TARGET ?? "http://localhost:8080",
+        changeOrigin: true,
+        // Don't rewrite the path — we want /api/* to land at the
+        // api-server's /api/* untouched.
+      },
+    },
   },
   preview: {
     port,

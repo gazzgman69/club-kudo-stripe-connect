@@ -1,26 +1,42 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthGate } from "@/components/auth-gate";
+import SignInPage from "@/pages/sign-in";
+import AdminHomePage from "@/pages/admin-home";
 import NotFound from "@/pages/not-found";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Auth-related queries get re-fetched aggressively; the rest
+      // can be cached. Per-query overrides via useQuery's options.
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
-function Home() {
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-900">Replit Agent is building...</h1>
-        <p className="mt-2 text-sm text-gray-600">Your app will appear here once it's ready.</p>
-      </div>
-    </div>
-  );
+function HomeRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation("/admin");
+  }, [setLocation]);
+  return null;
 }
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/" component={HomeRedirect} />
+      <Route path="/sign-in" component={SignInPage} />
+      <Route path="/admin">
+        <AuthGate requireRole="admin">
+          <AdminHomePage />
+        </AuthGate>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
