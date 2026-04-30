@@ -4,7 +4,7 @@ import {
   type Request,
   type Response,
 } from "express";
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import { existsSync } from "node:fs";
@@ -162,28 +162,32 @@ async function handleReload(req: Request, res: Response): Promise<void> {
       stderr: stderr.trim() || undefined,
     });
 
-    // After a successful build (or an explicit restart=1), trigger a
-    // restart so the new dist/index.mjs gets loaded into a fresh
-    // process. Preferred path: SIGUSR2 to our parent process (nodemon
-    // catches it and respawns cleanly, preserving the parent watcher).
-    // Fallback: process.exit(0) for non-nodemon supervisors.
+    // After a successful build (or an explicit restart=1), nudge
+    // nodemon directly by command-name to restart. Going via
+    // process.ppid is unreliable on pnpm-launched setups: pnpm wraps
+    // the dev script in `sh -c`, so process.ppid points at the shell
+    // wrapper, not nodemon. Sending SIGUSR2 to the shell killed it
+    // and SIGHUPped the node child (production observation).
+    //
+    // pkill targets nodemon by command-line match. If pkill succeeds,
+    // nodemon catches SIGUSR2 as its restart signal and respawns
+    // node cleanly. If pkill fails (no nodemon — e.g. production
+    // direct-start), do nothing and rely on the supervisor: the
+    // build wrote new dist/, legacyWatch (or any production watcher)
+    // will catch up.
     if (build || restart) {
-      // Defer briefly so the response flushes before the process dies.
       setTimeout(() => {
-        try {
-          if (process.ppid && process.ppid !== 1) {
-            process.kill(process.ppid, "SIGUSR2");
-            return;
-          }
-        } catch (sigErr) {
-          // Fall through to process.exit if signal delivery failed
-          // (e.g. parent died, or doesn't accept SIGUSR2).
+        const child = spawn("pkill", ["-USR2", "-f", "nodemon"], {
+          stdio: "ignore",
+          detached: true,
+        });
+        child.on("error", (sigErr) => {
           req.log?.warn(
-            { err: sigErr, ppid: process.ppid },
-            "admin reload: SIGUSR2 to parent failed; exiting instead",
+            { err: sigErr },
+            "admin reload: pkill -USR2 nodemon failed; bundle change relies on watcher",
           );
-        }
-        process.exit(0);
+        });
+        child.unref();
       }, 500);
     }
   } catch (err) {
