@@ -61,7 +61,7 @@ export async function buildApp(): Promise<Express> {
   // 7. Global rate limit (Redis-backed) — applied AFTER session so it can key by user later
   app.use(await buildGlobalRateLimiter());
 
-  // ─── Stripe webhooks: ALL FOUR constraints below MUST hold (Phase 1 Step 7) ───
+  // ─── Stripe webhooks: ALL FOUR constraints below MUST hold (Phase 1 Step 9) ───
   // 1. Mounted BEFORE the global JSON body parser below — Stripe signature
   //    verification needs the untouched raw bytes; any prior parsing breaks it.
   // 2. The route handler must use `express.raw({ type: "application/json" })`
@@ -72,14 +72,14 @@ export async function buildApp(): Promise<Express> {
   //    of events. Mount `/api/webhooks` BEFORE the global limiter, OR apply
   //    a dedicated webhook limiter sized for Stripe's traffic profile.
   //
-  // Example wiring (Step 7):
+  // Example wiring (Step 9):
   //   app.use("/api/webhooks/stripe",
   //     express.raw({ type: "application/json" }),
   //     stripeWebhookRouter);
   //
   // Currently the global rate limiter IS mounted above this point, so when
-  // Step 7 adds the webhook router it must be moved above the rate limiter
-  // (and the Step 7 PR description must call this out).
+  // Step 9 adds the webhook router it must be moved above the rate limiter
+  // (and the Step 9 PR description must call this out).
 
   app.use("/api", express.json({ limit: "1mb" }));
   app.use("/api", express.urlencoded({ extended: true, limit: "1mb" }));
