@@ -69,9 +69,16 @@ const repoRoot = findRepoRoot();
  *                                @workspace/api-server run build` to
  *                                regenerate dist/.
  *   restart=1                    (off) After everything else succeeds,
- *                                exit the process so Replit's workflow
- *                                supervisor respawns it. Combine with
+ *                                signal nodemon to respawn (SIGUSR2 by
+ *                                command-name match). Combine with
  *                                build=1 for a full code deploy.
+ *   exit=1                       (off) Force-exit the current process
+ *                                after responding. Useful when nodemon
+ *                                isn't running and the bash supervisor
+ *                                (or Replit's workflow run command) is
+ *                                relied on to respawn from the new
+ *                                dist/. Belt-and-braces: also runs the
+ *                                pkill from restart=1 first.
  *
  * Example curl:
  *
@@ -112,6 +119,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
   const test = flag("test");
   const build = flag("build");
   const restart = flag("restart");
+  const exitAfter = flag("exit");
 
   const cmds: string[] = [];
   cmds.push(
@@ -157,7 +165,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
       mode: force ? "force" : "pull",
       ranAt: new Date(startedAt).toISOString(),
       durationMs: Date.now() - startedAt,
-      steps: { install, schema, seed, typecheck, test, build, restart },
+      steps: { install, schema, seed, typecheck, test, build, restart, exit: exitAfter },
       stdout: stdout.trim(),
       stderr: stderr.trim() || undefined,
     });
@@ -175,7 +183,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
     // direct-start), do nothing and rely on the supervisor: the
     // build wrote new dist/, legacyWatch (or any production watcher)
     // will catch up.
-    if (build || restart) {
+    if (build || restart || exitAfter) {
       setTimeout(() => {
         const child = spawn("pkill", ["-USR2", "-f", "nodemon"], {
           stdio: "ignore",
@@ -189,6 +197,19 @@ async function handleReload(req: Request, res: Response): Promise<void> {
         });
         child.unref();
       }, 500);
+    }
+
+    // Self-exit fallback for setups where nodemon isn't running.
+    // Replit's workflow run command (and the bash supervisor at
+    // /tmp/run-api-server.sh) respawns a dead node child from the
+    // current dist/index.mjs, so a clean exit forces a deploy of the
+    // freshly built bundle. Wait long enough for the response to
+    // flush, then exit cleanly.
+    if (exitAfter) {
+      setTimeout(() => {
+        req.log.warn("admin reload: self-exit (exit=1) — supervisor should respawn");
+        process.exit(0);
+      }, 1500);
     }
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; message?: string };
