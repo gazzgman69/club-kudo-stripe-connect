@@ -45,6 +45,26 @@ const envSchema = z.object({
     .transform(Number),
 
   COOKIE_DOMAIN: z.string().optional(),
+
+  // Magic-link auth (Phase 1 Step 5b).
+  RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY must be set"),
+  // Public base URL used to build outbound magic-link URLs. If unset,
+  // derived from the request (`${req.protocol}://${req.get('host')}`).
+  // Must include scheme and no trailing slash if set.
+  APP_BASE_URL: z
+    .string()
+    .url()
+    .refine((v) => !v.endsWith("/"), {
+      message: "APP_BASE_URL must not end with a trailing slash",
+    })
+    .optional(),
+  // From-header identity for outbound transactional email. Must be at a
+  // Resend-verified domain (currently bookings.clubkudo.com).
+  EMAIL_FROM: z
+    .string()
+    .default("Club Kudo <noreply@bookings.clubkudo.com>"),
+  // Optional Reply-To. Leave unset to omit the header entirely.
+  EMAIL_REPLY_TO: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

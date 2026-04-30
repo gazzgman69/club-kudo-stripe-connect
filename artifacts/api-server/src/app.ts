@@ -17,6 +17,7 @@ import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 
 import router from "./routes";
 import adminRouter from "./routes/admin";
+import authRouter from "./routes/auth";
 
 export async function buildApp(): Promise<Express> {
   const env = getEnv();
@@ -91,6 +92,14 @@ export async function buildApp(): Promise<Express> {
   // outside the browser session — no CSRF token, no Idempotency-Key.
   // Auth is via the RELOAD_SECRET env var checked inside the handler.
   app.use("/api", adminRouter);
+
+  // Public auth routes (Phase 1 Step 5b). Mounted BEFORE csrfProtection
+  // because the user has no session yet to bind a CSRF token to —
+  // they're trying to start one. Mounted BEFORE idempotencyMiddleware
+  // for the same reason: requiring Idempotency-Key on a sign-in form
+  // is unnecessary friction. Step 5d adds dedicated per-IP and
+  // per-email rate limiters to defend against magic-link abuse.
+  app.use("/api", authRouter);
 
   // CSRF: double-submit cookie pattern. Auto-bypasses GET/HEAD/OPTIONS,
   // so /api/healthz and /api/csrf-token (both GET) work without a token.

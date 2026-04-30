@@ -55,6 +55,10 @@ committed file.**
 | `RATE_LIMIT_MAX`               | Max requests per IP per window                                                                   | optional        | Defaults to `100`                                                               |
 | `COOKIE_DOMAIN`                | Cookie `Domain` attribute. Leave unset for host-only cookies.                                    | optional (prod) | Set if frontend and API are on different subdomains of the same parent domain   |
 | `RELOAD_SECRET`                | Auth secret for the `/api/admin/reload` endpoint. Without this set, the endpoint returns 503.    | optional        | Generate with `openssl rand -hex 32`. Set in Replit Secrets.                    |
+| `RESEND_API_KEY`               | API key for outbound transactional email (magic-link sign-in).                                   | dev + prod      | Resend → API keys (sending-only scope, scoped to `bookings.clubkudo.com`).      |
+| `APP_BASE_URL`                 | Public URL used to build outbound magic-link URLs (no trailing slash). If unset, derived from the request.  | optional   | Set explicitly when frontend and API are on different origins.                  |
+| `EMAIL_FROM`                   | From-header identity for outbound transactional email. Must be at a Resend-verified domain.      | optional        | Defaults to `Club Kudo <noreply@bookings.clubkudo.com>`.                        |
+| `EMAIL_REPLY_TO`               | Reply-To header for outbound transactional email. Set if you want replies to land in an inbox.   | optional        | E.g. `bookings@clubkudo.com`. Leave unset to omit the header.                   |
 
 ### Future env vars (not yet validated in `env.ts`)
 
@@ -63,7 +67,6 @@ have to rediscover them:
 
 | Variable                  | Purpose                                                          | Phase | Where to obtain                                                          |
 |---------------------------|------------------------------------------------------------------|-------|--------------------------------------------------------------------------|
-| `RESEND_API_KEY`          | Outbound transactional email (magic links from `bookings@clubkudo.com`) | 5  | Resend → API Keys (or via the Replit Resend integration if available — see `HANDOVER.md`) |
 | `STRIPE_SECRET_KEY`       | Stripe Connect V2 server-side API key                            | 8     | Stripe Dashboard → Developers → API keys (use `sk_test_…` in dev)       |
 | `STRIPE_WEBHOOK_SECRET`   | Signing secret for the `/webhooks/stripe` endpoint               | 9     | Stripe Dashboard → Developers → Webhooks → endpoint signing secret       |
 | `STRIPE_CONNECT_CLIENT_ID`| Connect platform client ID (V2)                                  | 8     | Stripe Dashboard → Connect → Settings                                    |

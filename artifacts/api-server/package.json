@@ -32,6 +32,7 @@
     "pino-http": "^10",
     "rate-limit-redis": "^4.3.1",
     "redis": "^5.12.1",
+    "resend": "^4.5.1",
     "zod": "catalog:"
   },
   "devDependencies": {
