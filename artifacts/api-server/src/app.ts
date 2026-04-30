@@ -26,6 +26,9 @@ import suppliersRouter from "./routes/admin/suppliers";
 import clientsRouter from "./routes/admin/clients";
 import gigsRouter from "./routes/admin/gigs";
 import platformSettingsRouter from "./routes/admin/platform-settings";
+import adminInvoicesRouter from "./routes/admin/invoices";
+import adminAuditLogRouter from "./routes/admin/audit-log";
+import adminStatsRouter from "./routes/admin/stats";
 import {
   handleStripeWebhook,
   stripeWebhookRawParser,
@@ -134,6 +137,11 @@ export async function buildApp(): Promise<Express> {
   app.use("/api", clientsRouter);
   app.use("/api", gigsRouter);
   app.use("/api", platformSettingsRouter);
+
+  // Admin: read-only money-flow screens (Phase 1 Step 10c)
+  app.use("/api", adminInvoicesRouter);
+  app.use("/api", adminAuditLogRouter);
+  app.use("/api", adminStatsRouter);
 
   app.use("/api", router);
 

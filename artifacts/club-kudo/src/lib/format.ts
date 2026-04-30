@@ -55,6 +55,16 @@ export function statusBadgeClasses(status: string): string {
     active: "bg-emerald-100 text-emerald-700",
     suspended: "bg-red-100 text-red-700",
     deauthorized: "bg-red-100 text-red-700",
+    // invoice
+    draft: "bg-gray-100 text-gray-700",
+    open: "bg-amber-100 text-amber-800",
+    paid: "bg-emerald-100 text-emerald-700",
+    void: "bg-gray-100 text-gray-500 line-through",
+    uncollectible: "bg-red-100 text-red-700",
+    // transfer
+    created: "bg-emerald-100 text-emerald-700",
+    failed: "bg-red-100 text-red-700",
+    reversed: "bg-amber-100 text-amber-800",
   };
   return `inline-block px-2 py-0.5 text-xs font-medium rounded ${
     map[status] ?? "bg-gray-100 text-gray-700"

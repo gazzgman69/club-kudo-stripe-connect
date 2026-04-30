@@ -37,6 +37,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
               <Link href="/admin/gigs" className="hover:text-gray-900">
                 Gigs
               </Link>
+              <Link href="/admin/invoices" className="hover:text-gray-900">
+                Invoices
+              </Link>
+              <Link href="/admin/audit-log" className="hover:text-gray-900">
+                Audit log
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">

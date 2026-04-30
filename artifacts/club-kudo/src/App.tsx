@@ -15,6 +15,9 @@ import AdminClientDetailPage from "@/pages/admin-client-detail";
 import AdminGigsListPage from "@/pages/admin-gigs-list";
 import AdminGigNewPage from "@/pages/admin-gig-new";
 import AdminGigDetailPage from "@/pages/admin-gig-detail";
+import AdminInvoicesListPage from "@/pages/admin-invoices-list";
+import AdminInvoiceDetailPage from "@/pages/admin-invoice-detail";
+import AdminAuditLogPage from "@/pages/admin-audit-log";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -57,6 +60,11 @@ function Router() {
       <Route path="/admin/gigs">{gated(<AdminGigsListPage />)}</Route>
       <Route path="/admin/gigs/new">{gated(<AdminGigNewPage />)}</Route>
       <Route path="/admin/gigs/:id">{gated(<AdminGigDetailPage />)}</Route>
+
+      <Route path="/admin/invoices">{gated(<AdminInvoicesListPage />)}</Route>
+      <Route path="/admin/invoices/:id">{gated(<AdminInvoiceDetailPage />)}</Route>
+
+      <Route path="/admin/audit-log">{gated(<AdminAuditLogPage />)}</Route>
 
       <Route component={NotFound} />
     </Switch>

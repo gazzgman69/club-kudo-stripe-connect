@@ -104,3 +104,67 @@ export interface OnboardingLinkResponse {
   onboardingUrl: string;
   emailedAt: string | null;
 }
+
+export type InvoiceType = "reservation" | "balance" | "self_billing";
+export type InvoiceStatus = "draft" | "open" | "paid" | "void" | "uncollectible";
+
+export interface Invoice {
+  id: string;
+  gigId: string;
+  invoiceType: InvoiceType;
+  status: InvoiceStatus;
+  stripeInvoiceId: string | null;
+  stripeChargeId: string | null;
+  totalPence: number;
+  currency: string;
+  issuedAt: string | null;
+  paidAt: string | null;
+  dueDate: string | null;
+  pdfUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Joined fields
+  gigName?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  entityType: string;
+  entityId: string | null;
+  action: string;
+  beforeState: unknown;
+  afterState: unknown;
+  idempotencyKey: string | null;
+  stripeEventId: string | null;
+  metadata: unknown;
+}
+
+export interface PlatformStats {
+  suppliers: {
+    total: number;
+    byStatus: Record<string, number>;
+  };
+  clients: {
+    total: number;
+  };
+  gigs: {
+    total: number;
+    byStatus: Record<string, number>;
+  };
+  invoices: {
+    total: number;
+    byStatus: Record<string, number>;
+    totalAmountPence: number;
+    totalPaidPence: number;
+  };
+  transfers: {
+    total: number;
+    byStatus: Record<string, number>;
+    totalAmountPence: number;
+  };
+}
