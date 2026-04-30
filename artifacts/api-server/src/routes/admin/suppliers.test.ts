@@ -63,6 +63,17 @@ vi.mock("../../lib/env", () => ({
   }),
 }));
 
+// The suppliers router applies requireAuth + requireRole at the
+// router level via router.use(). Stub them out to no-ops here so the
+// individual handler tests don't need a session-bearing request.
+// The auth middleware factories themselves have their own dedicated
+// tests in middlewares/auth.test.ts.
+vi.mock("../../middlewares/auth", () => ({
+  requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+  requireRole: () => (_req: unknown, _res: unknown, next: () => void) =>
+    next(),
+}));
+
 import suppliersRouter from "./suppliers";
 import { HttpError } from "../../middlewares/errorHandler";
 
@@ -86,12 +97,15 @@ function findHandler(method: "post" | "get" | "patch" | "delete", path: string) 
   throw new Error(`handler not found: ${method.toUpperCase()} ${path}`);
 }
 
-const handleCreate = findHandler("post", "/");
-const handleGetOne = findHandler("get", "/:id");
-const handleUpdate = findHandler("patch", "/:id");
-const handleDelete = findHandler("delete", "/:id");
-const handleOnboarding = findHandler("post", "/:id/stripe-onboarding-link");
-const handleStatus = findHandler("get", "/:id/stripe-status");
+const handleCreate = findHandler("post", "/admin/suppliers");
+const handleGetOne = findHandler("get", "/admin/suppliers/:id");
+const handleUpdate = findHandler("patch", "/admin/suppliers/:id");
+const handleDelete = findHandler("delete", "/admin/suppliers/:id");
+const handleOnboarding = findHandler(
+  "post",
+  "/admin/suppliers/:id/stripe-onboarding-link",
+);
+const handleStatus = findHandler("get", "/admin/suppliers/:id/stripe-status");
 
 interface MockRes {
   statusCode: number;

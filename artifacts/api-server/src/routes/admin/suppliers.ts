@@ -17,6 +17,7 @@ import { getStripe } from "../../lib/stripe";
 import { sendSupplierOnboardingEmail } from "../../lib/email";
 import { getEnv } from "../../lib/env";
 import { HttpError } from "../../middlewares/errorHandler";
+import { requireAuth, requireRole } from "../../middlewares/auth";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -523,12 +524,23 @@ async function handleGetStripeStatus(
 }
 
 const router: IRouter = Router();
-router.post("/", handleCreateSupplier);
-router.get("/", handleListSuppliers);
-router.get("/:id", handleGetSupplier);
-router.patch("/:id", handleUpdateSupplier);
-router.delete("/:id", handleDeleteSupplier);
-router.post("/:id/stripe-onboarding-link", handleCreateOnboardingLink);
-router.get("/:id/stripe-status", handleGetStripeStatus);
+
+// Apply auth gates to every route in this router. Mounted at /api in
+// app.ts; the absolute paths below give /api/admin/suppliers/* on
+// the wire. This matches the existing adminRouter pattern (which
+// also uses absolute paths internally) and side-steps Express 5's
+// path-to-regexp behaviour around mounted routers + root paths.
+router.use(requireAuth, requireRole("admin"));
+
+router.post("/admin/suppliers", handleCreateSupplier);
+router.get("/admin/suppliers", handleListSuppliers);
+router.get("/admin/suppliers/:id", handleGetSupplier);
+router.patch("/admin/suppliers/:id", handleUpdateSupplier);
+router.delete("/admin/suppliers/:id", handleDeleteSupplier);
+router.post(
+  "/admin/suppliers/:id/stripe-onboarding-link",
+  handleCreateOnboardingLink,
+);
+router.get("/admin/suppliers/:id/stripe-status", handleGetStripeStatus);
 
 export default router;

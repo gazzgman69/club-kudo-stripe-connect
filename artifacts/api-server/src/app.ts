@@ -23,7 +23,6 @@ import router from "./routes";
 import adminRouter from "./routes/admin";
 import authRouter from "./routes/auth";
 import suppliersRouter from "./routes/admin/suppliers";
-import { requireAuth, requireRole } from "./middlewares/auth";
 
 export async function buildApp(): Promise<Express> {
   const env = getEnv();
@@ -129,15 +128,11 @@ export async function buildApp(): Promise<Express> {
   // requests don't waste a DB lookup.
   app.use("/api", idempotencyMiddleware);
 
-  // Admin: suppliers (Phase 1 Step 6). Behind requireAuth +
-  // requireRole("admin"), so all the auth/csrf/idempotency gates
-  // already applied above must succeed first.
-  app.use(
-    "/api/admin/suppliers",
-    requireAuth,
-    requireRole("admin"),
-    suppliersRouter,
-  );
+  // Admin: suppliers (Phase 1 Step 6). Mounted at /api; the router
+  // applies requireAuth + requireRole("admin") internally, and uses
+  // absolute paths (/admin/suppliers/*) matching the adminRouter
+  // pattern.
+  app.use("/api", suppliersRouter);
 
   app.use("/api", router);
 
