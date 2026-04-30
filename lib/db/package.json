@@ -10,7 +10,8 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts && pnpm run apply-sql",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts && pnpm run apply-sql",
-    "apply-sql": "tsx ./scripts/apply-sql.ts"
+    "apply-sql": "tsx ./scripts/apply-sql.ts",
+    "seed-admin": "tsx ./scripts/seed-admin.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",

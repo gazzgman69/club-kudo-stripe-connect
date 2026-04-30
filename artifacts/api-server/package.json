@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
+    "dev": "export NODE_ENV=development && pnpm run build && pnpm run start:watch",
     "build": "node ./build.mjs",
     "start": "SENTRY_PRELOAD_INTEGRATIONS=Http,Express node --enable-source-maps --import @sentry/node/preload --import ./dist/instrument.mjs ./dist/index.mjs",
+    "start:watch": "SENTRY_PRELOAD_INTEGRATIONS=Http,Express nodemon",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -42,6 +43,7 @@
     "@types/node": "catalog:",
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
+    "nodemon": "^3.1.7",
     "pino-pretty": "^13",
     "thread-stream": "3.1.0",
     "vitest": "^2.1.0"

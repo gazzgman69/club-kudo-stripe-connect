@@ -59,6 +59,9 @@ const repoRoot = findRepoRoot();
  *   schema=1                     (off) Run `pnpm --filter @workspace/db
  *                                run push` to apply Drizzle schema
  *                                changes to Neon.
+ *   seed=1                       (off) Run the admin seed script
+ *                                (`@workspace/db run seed-admin`).
+ *                                Idempotent — safe to re-run.
  *   typecheck=1                  (off) Run `pnpm -w run typecheck`.
  *   test=1                       (off) Run the api-server test suite
  *                                via vitest.
@@ -104,6 +107,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
   const force = flag("force");
   const install = flag("install");
   const schema = flag("schema");
+  const seed = flag("seed");
   const typecheck = flag("typecheck");
   const test = flag("test");
   const build = flag("build");
@@ -117,6 +121,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
   );
   if (install) cmds.push("pnpm install --no-frozen-lockfile");
   if (schema) cmds.push("pnpm --filter @workspace/db run push");
+  if (seed) cmds.push("pnpm --filter @workspace/db run seed-admin");
   if (typecheck) cmds.push("pnpm -w run typecheck");
   if (test) cmds.push("pnpm --filter @workspace/api-server run test");
   if (build) cmds.push("pnpm --filter @workspace/api-server run build");
@@ -152,7 +157,7 @@ async function handleReload(req: Request, res: Response): Promise<void> {
       mode: force ? "force" : "pull",
       ranAt: new Date(startedAt).toISOString(),
       durationMs: Date.now() - startedAt,
-      steps: { install, schema, typecheck, test, build, restart },
+      steps: { install, schema, seed, typecheck, test, build, restart },
       stdout: stdout.trim(),
       stderr: stderr.trim() || undefined,
     });

@@ -1,0 +1,6 @@
+{
+  "watch": ["dist"],
+  "ext": "mjs",
+  "delay": 500,
+  "exec": "node --enable-source-maps --import @sentry/node/preload --import ./dist/instrument.mjs ./dist/index.mjs"
+}
