@@ -106,11 +106,14 @@ export async function handleStripeWebhook(
   res.status(200).json({ received: true });
 }
 
-// The route is exported as a small router so it can be mounted with
-// the path-level express.raw body parser in app.ts.
+// Absolute path inside the router, mounted at "/" in app.ts. This
+// matches the working pattern used by adminRouter, authRouter,
+// suppliersRouter, etc. and avoids the Express 5 trailing-slash gotcha
+// where router.post("/") doesn't match a request whose URL was the
+// router's mount prefix exactly.
 export const stripeWebhookRouter: express.Router = express.Router();
 stripeWebhookRouter.post(
-  "/",
+  "/api/webhooks/stripe",
   express.raw({ type: "application/json", limit: "1mb" }),
   handleStripeWebhook,
 );

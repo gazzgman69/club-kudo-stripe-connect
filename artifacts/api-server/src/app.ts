@@ -71,12 +71,17 @@ export async function buildApp(): Promise<Express> {
   app.use(await buildSessionMiddleware());
 
   // ─── Stripe webhooks (Phase 1 Step 9) ───
-  // Mounted BEFORE the global rate limiter (Stripe burst traffic mustn't
-  // be throttled), BEFORE the global JSON parser (signature verification
-  // needs raw bytes — the route's express.raw middleware does this
-  // route-locally), and BEFORE csrfProtection (Stripe is
-  // server-to-server, the webhook signature IS the auth).
-  app.use("/api/webhooks/stripe", stripeWebhookRouter);
+  // Mounted at "/" so Express dispatches the absolute /api/webhooks/stripe
+  // path correctly — mounting at /api/webhooks/stripe with a router-internal
+  // POST "/" hits Express 5's trailing-slash trap. Mounted BEFORE the
+  // global rate limiter (Stripe burst traffic mustn't be throttled),
+  // BEFORE the global JSON parser (signature verification needs raw bytes
+  // — the route's express.raw middleware does this route-locally), and
+  // BEFORE csrfProtection (Stripe is server-to-server, the webhook
+  // signature IS the auth). Handler always sends a response, never
+  // calls next(), so subsequent middleware is skipped for matched
+  // requests.
+  app.use(stripeWebhookRouter);
 
   // 7. Global rate limit (Redis-backed) — applied AFTER session so it can key by user later
   app.use(await buildGlobalRateLimiter());
