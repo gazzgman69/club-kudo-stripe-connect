@@ -1,4 +1,7 @@
-import rateLimit, { type RateLimitRequestHandler } from "express-rate-limit";
+import rateLimit, {
+  ipKeyGenerator,
+  type RateLimitRequestHandler,
+} from "express-rate-limit";
 import { RedisStore, type RedisReply } from "rate-limit-redis";
 import { getRedis } from "../lib/redis";
 import { getEnv } from "../lib/env";
@@ -57,7 +60,15 @@ export async function buildAuthEmailRateLimiter(): Promise<RateLimitRequestHandl
       const raw = (req.body as { email?: unknown })?.email;
       const email =
         typeof raw === "string" ? raw.trim().toLowerCase() : "";
-      return email || `ip:${req.ip ?? "unknown"}`;
+      // Email present → key on the (normalised) email, full stop. Same
+      // email from any IP collapses to one key, which is the whole
+      // point of this limiter.
+      if (email) return `email:${email}`;
+      // No email (malformed body) → fall back to IP. Use the library's
+      // ipKeyGenerator helper so IPv6 clients get keyed by /64 prefix
+      // rather than full /128 — without this, a hostile client can
+      // walk through their /64 and trivially bypass the limiter.
+      return `ip:${ipKeyGenerator(req.ip ?? "")}`;
     },
     store: new RedisStore({
       sendCommand: (...args: string[]) =>
