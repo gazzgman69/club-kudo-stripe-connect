@@ -18,6 +18,8 @@ import AdminGigDetailPage from "@/pages/admin-gig-detail";
 import AdminInvoicesListPage from "@/pages/admin-invoices-list";
 import AdminInvoiceDetailPage from "@/pages/admin-invoice-detail";
 import AdminAuditLogPage from "@/pages/admin-audit-log";
+import OnboardingCompletePage from "@/pages/onboarding-complete";
+import OnboardingExpiredPage from "@/pages/onboarding-expired";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -46,6 +48,11 @@ function Router() {
     <Switch>
       <Route path="/" component={HomeRedirect} />
       <Route path="/sign-in" component={SignInPage} />
+
+      {/* Public supplier-facing landing pages from Stripe Connect onboarding.
+          Un-gated by design — suppliers have no Club Kudo login. */}
+      <Route path="/onboarding/complete" component={OnboardingCompletePage} />
+      <Route path="/onboarding/expired" component={OnboardingExpiredPage} />
 
       <Route path="/admin">{gated(<AdminHomePage />)}</Route>
 

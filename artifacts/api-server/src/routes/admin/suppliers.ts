@@ -447,11 +447,13 @@ async function handleCreateOnboardingLink(
         type: "account_onboarding",
         account_onboarding: {
           configurations: ["recipient"],
-          // Both must be the React admin pages, NOT the JSON API. Stripe
-          // sends the user's browser to these — landing on a raw JSON
-          // payload is what we just fixed.
-          refresh_url: `${baseUrl}/admin/suppliers/${supplier.id}?onboarding=expired`,
-          return_url: `${baseUrl}/admin/suppliers/${supplier.id}?onboarding=complete`,
+          // Public supplier-facing landing pages. The supplier doesn't
+          // have an admin login — they're just a Stripe Connect
+          // onboardee. Routing them into /admin would either 401 or
+          // (worse) leak admin UI. Phase 6 will replace these with a
+          // proper supplier portal.
+          refresh_url: `${baseUrl}/onboarding/expired`,
+          return_url: `${baseUrl}/onboarding/complete`,
         },
       },
     });
