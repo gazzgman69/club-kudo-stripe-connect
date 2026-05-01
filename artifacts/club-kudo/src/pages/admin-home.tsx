@@ -1,4 +1,4 @@
-import { Link, useSearch } from "wouter";
+import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/lib/use-session";
 import { apiFetch } from "@/lib/api";
@@ -181,40 +181,6 @@ export default function AdminHomePage() {
             </div>
           </>
         )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Quick links</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-3 text-sm">
-              <Link
-                href="/admin/invoices"
-                className="text-blue-600 hover:underline"
-              >
-                Invoices →
-              </Link>
-              <Link
-                href="/admin/audit-log"
-                className="text-blue-600 hover:underline"
-              >
-                Audit log →
-              </Link>
-              <Link
-                href="/admin/gigs/new"
-                className="text-blue-600 hover:underline"
-              >
-                New gig →
-              </Link>
-              <Link
-                href="/admin/suppliers/new"
-                className="text-blue-600 hover:underline"
-              >
-                New supplier →
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </AdminShell>
   );
