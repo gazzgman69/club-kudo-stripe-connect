@@ -3,6 +3,7 @@ import { Link, useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { Client } from "@/lib/types";
+import { formatDateTime } from "@/lib/format";
 import { AdminShell } from "@/components/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,7 @@ export default function AdminClientDetailPage() {
   const queryClient = useQueryClient();
   const [editError, setEditError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
 
   const client = useQuery({
     queryKey: ["client", id],
@@ -42,6 +44,8 @@ export default function AdminClientDetailPage() {
     onSuccess: (updated) => {
       queryClient.setQueryData(["client", id], updated);
       queryClient.invalidateQueries({ queryKey: ["clients"] });
+      setEditError(null);
+      setSavedAt(new Date());
     },
     onError: (err) => setEditError((err as Error).message),
   });
@@ -84,7 +88,14 @@ export default function AdminClientDetailPage() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>{client.data.fullName}</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>{client.data.fullName}</span>
+                {savedAt ? (
+                  <span className="text-xs font-normal text-emerald-700">
+                    Saved {formatDateTime(savedAt.toISOString())}
+                  </span>
+                ) : null}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ClientForm

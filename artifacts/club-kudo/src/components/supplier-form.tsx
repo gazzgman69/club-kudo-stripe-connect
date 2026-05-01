@@ -166,7 +166,15 @@ export function SupplierForm({
               id="vatRegistered"
               checked={values.vatRegistered}
               onCheckedChange={(v) =>
-                setValues({ ...values, vatRegistered: v })
+                // When toggling VAT registration ON, default to the standard
+                // UK rate (20%) so the user doesn't have to clear "0" first.
+                // When toggling OFF, force the rate back to 0 so a stale
+                // value can't sneak through on submit.
+                setValues({
+                  ...values,
+                  vatRegistered: v,
+                  vatRateBps: v ? values.vatRateBps || 2000 : 0,
+                })
               }
             />
           </div>
@@ -175,23 +183,31 @@ export function SupplierForm({
           </p>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="vatRateBps">VAT rate (basis points)</Label>
+          <Label htmlFor="vatRatePct">VAT rate (%)</Label>
           <Input
-            id="vatRateBps"
+            id="vatRatePct"
             type="number"
+            inputMode="decimal"
             min={0}
-            max={10000}
-            value={values.vatRateBps}
-            onChange={(e) =>
+            max={100}
+            step={0.01}
+            // Display as percent: stored basis points / 100. 2000 → 20.
+            value={values.vatRegistered ? values.vatRateBps / 100 : ""}
+            onChange={(e) => {
+              const pct = Number.parseFloat(e.target.value);
               setValues({
                 ...values,
-                vatRateBps: Number.parseInt(e.target.value, 10) || 0,
-              })
-            }
+                vatRateBps: Number.isFinite(pct)
+                  ? Math.round(pct * 100)
+                  : 0,
+              });
+            }}
+            onFocus={(e) => e.target.select()}
             disabled={!values.vatRegistered}
+            placeholder={values.vatRegistered ? "20" : "—"}
           />
           <p className="text-xs text-gray-500">
-            2000 = 20%. Stored at line creation; later changes don't
+            Stored against each line at creation, so later rate changes don't
             retroactively rewrite invoiced lines.
           </p>
         </div>

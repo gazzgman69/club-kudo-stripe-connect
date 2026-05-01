@@ -29,6 +29,7 @@ export default function AdminSupplierDetailPage() {
     enabled: !!id,
   });
 
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const update = useMutation({
     mutationFn: (values: SupplierFormValues) =>
       apiFetch<Supplier>(`/api/admin/suppliers/${id}`, {
@@ -46,6 +47,7 @@ export default function AdminSupplierDetailPage() {
       queryClient.setQueryData(["supplier", id], updated);
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       setEditError(null);
+      setSavedAt(new Date());
     },
     onError: (err) => setEditError((err as Error).message),
   });
@@ -105,7 +107,14 @@ export default function AdminSupplierDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{s.tradingName}</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>{s.tradingName}</span>
+                {savedAt ? (
+                  <span className="text-xs font-normal text-emerald-700">
+                    Saved {formatDateTime(savedAt.toISOString())}
+                  </span>
+                ) : null}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <SupplierForm
