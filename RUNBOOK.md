@@ -41,15 +41,23 @@ trigger a build / restart.
 3. Update `.cowork-credentials/credentials.env` on your laptop.
 4. Redeploy from the Replit "Run" button (Secrets only inject into new shells).
 
-### `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`
+### `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_WEBHOOK_SECRET_V2`
 
 1. Stripe Dashboard → Developers → API keys → reveal current key, then
    "Roll" to create a new one.
 2. Update Replit Secret `STRIPE_SECRET_KEY`.
-3. Webhook secret: Developers → Webhooks → your endpoint → "Reveal signing
-   secret" → roll. Update `STRIPE_WEBHOOK_SECRET` in Replit Secrets.
-4. Redeploy.
-5. Test: hit `/api/webhooks/stripe` with a Stripe CLI replay; verify a 200.
+3. **V1 webhook secret**: Developers → Webhooks → your V1 endpoint →
+   "Reveal signing secret" → roll. Update `STRIPE_WEBHOOK_SECRET` in
+   Replit Secrets.
+4. **V2 event destination secret**: Workbench → Webhooks → your V2
+   destination → "Reveal signing secret". Update `STRIPE_WEBHOOK_SECRET_V2`
+   in Replit Secrets.
+5. Redeploy.
+6. Test: hit `/api/webhooks/stripe` with a Stripe CLI replay; verify a 200.
+
+If you only have one destination subscribed to both V1 and V2 events,
+leave `STRIPE_WEBHOOK_SECRET_V2` unset; the handler falls back to
+`STRIPE_WEBHOOK_SECRET` for V2 verification.
 
 ### `DATABASE_URL`
 
