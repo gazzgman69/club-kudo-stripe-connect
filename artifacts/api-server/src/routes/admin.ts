@@ -192,22 +192,23 @@ async function handleReload(req: Request, res: Response): Promise<void> {
       stderr: stderr.trim() || undefined,
     });
 
-    // After a successful build (or an explicit restart=1), nudge
-    // nodemon directly by command-name to restart. Going via
-    // process.ppid is unreliable on pnpm-launched setups: pnpm wraps
-    // the dev script in `sh -c`, so process.ppid points at the shell
-    // wrapper, not nodemon. Sending SIGUSR2 to the shell killed it
-    // and SIGHUPped the node child (production observation).
+    // restart=1 — nudge nodemon to respawn its node child via SIGUSR2.
     //
-    // pkill targets nodemon by command-line match. If pkill succeeds,
-    // nodemon catches SIGUSR2 as its restart signal and respawns
-    // node cleanly. If pkill fails (no nodemon — e.g. production
-    // direct-start), do nothing and rely on the supervisor: the
-    // build wrote new dist/, legacyWatch (or any production watcher)
-    // will catch up.
-    if (build || restart || exitAfter) {
+    // Pattern is `[.]bin/nodemon` (regex with character class) so the
+    // match is the actual nodemon binary path. A naive `nodemon`
+    // pattern would also match the parent pnpm process whose cmdline
+    // contains "nodemon" (because the dev script body is "pnpm run
+    // build && pnpm run start:watch" → SENTRY_… nodemon …).
+    // pnpm has no SIGUSR2 handler, so it dies, taking the whole dev
+    // tree with it (production observation).
+    //
+    // Build alone (build=1 without restart=1) deliberately does NOT
+    // pkill any more — nodemon's filesystem watcher on dist/ picks up
+    // the new bundle on its own. Forcing a signal on every build was
+    // over-eager.
+    if (restart) {
       setTimeout(() => {
-        const child = spawn("pkill", ["-USR2", "-f", "nodemon"], {
+        const child = spawn("pkill", ["-USR2", "-f", "[.]bin/nodemon"], {
           stdio: "ignore",
           detached: true,
         });
