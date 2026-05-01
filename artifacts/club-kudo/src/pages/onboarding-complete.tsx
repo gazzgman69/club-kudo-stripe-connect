@@ -1,7 +1,7 @@
 /**
  * Public landing page that suppliers see after returning from Stripe
- * Connect onboarding. NOT auth-gated — the supplier is just a Stripe
- * Connect onboardee, they don't have a Club Kudo login (yet — that
+ * Connect onboarding. NOT auth-gated - the supplier is just a Stripe
+ * Connect onboardee, they don't have a Club Kudo login (yet - that
  * lands in Phase 6 with the supplier portal).
  *
  * Stripe's return_url for the V2 onboarding link points here. The page
@@ -32,7 +32,7 @@ export default function OnboardingCompletePage() {
         </h1>
         <p className="mt-2 text-sm text-gray-600 leading-relaxed">
           Thanks for completing the Stripe onboarding. Stripe will verify
-          your details over the next few minutes — once that's done, payments
+          your details over the next few minutes. Once that's done, payments
           for your bookings will route directly to your account.
         </p>
         <p className="mt-4 text-sm text-gray-600 leading-relaxed">

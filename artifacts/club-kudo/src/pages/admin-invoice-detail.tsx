@@ -71,7 +71,7 @@ export default function AdminInvoiceDetailPage() {
               </h1>
               <p className="text-sm text-gray-500">
                 {TYPE_LABELS[query.data.invoiceType] ?? query.data.invoiceType}{" "}
-                · {query.data.gigName ?? "—"}
+                · {query.data.gigName ?? "-"}
               </p>
             </div>
             <span className={statusBadgeClasses(query.data.status)}>
@@ -118,9 +118,9 @@ export default function AdminInvoiceDetailPage() {
                     {query.data.gigName ?? query.data.gigId}
                   </Link>
                 </Field>
-                <Field label="Client">{query.data.clientName ?? "—"}</Field>
+                <Field label="Client">{query.data.clientName ?? "-"}</Field>
                 <Field label="Client email">
-                  {query.data.clientEmail ?? "—"}
+                  {query.data.clientEmail ?? "-"}
                 </Field>
               </dl>
             </CardContent>
@@ -134,12 +134,12 @@ export default function AdminInvoiceDetailPage() {
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Invoice ID">
                   <span className="font-mono text-xs">
-                    {query.data.stripeInvoiceId ?? "—"}
+                    {query.data.stripeInvoiceId ?? "-"}
                   </span>
                 </Field>
                 <Field label="Charge">
                   <span className="font-mono text-xs">
-                    {query.data.stripeChargeId ?? "—"}
+                    {query.data.stripeChargeId ?? "-"}
                   </span>
                 </Field>
                 <Field label="Hosted PDF">
@@ -153,7 +153,7 @@ export default function AdminInvoiceDetailPage() {
                       Download PDF
                     </a>
                   ) : (
-                    "—"
+                    "-"
                   )}
                 </Field>
               </dl>

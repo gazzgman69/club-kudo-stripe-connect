@@ -74,7 +74,7 @@ export default function AdminGigsListPage() {
                       {formatDate(g.eventDate)}
                     </td>
                     <td className="px-4 py-3 text-gray-700">
-                      {g.venue ?? "—"}
+                      {g.venue ?? "-"}
                     </td>
                     <td className="px-4 py-3">
                       <span className={statusBadgeClasses(g.status)}>

@@ -72,9 +72,9 @@ export default function AdminClientsListPage() {
                       {c.fullName}
                     </td>
                     <td className="px-4 py-3 text-gray-700">{c.email}</td>
-                    <td className="px-4 py-3 text-gray-700">{c.phone ?? "—"}</td>
+                    <td className="px-4 py-3 text-gray-700">{c.phone ?? "-"}</td>
                     <td className="px-4 py-3 text-xs text-gray-500 font-mono">
-                      {c.stripeCustomerId ? "✓" : "—"}
+                      {c.stripeCustomerId ? "✓" : "-"}
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {formatDate(c.createdAt)}

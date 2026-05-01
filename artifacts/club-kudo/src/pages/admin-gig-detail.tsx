@@ -377,7 +377,7 @@ function LineItemsCard({
                       ? "Club Kudo"
                       : (li.supplierId &&
                           supplierMap.get(li.supplierId)?.tradingName) ??
-                        "—"}
+                        "-"}
                   </td>
                   <td className="px-4 py-2 text-right">
                     {formatPence(li.amountPence)}
@@ -492,7 +492,7 @@ function AddLineItemCard({
               required
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. DJ — 4-hour set"
+              placeholder="e.g. DJ - 4-hour set"
             />
           </div>
           <div className="space-y-2">
@@ -532,7 +532,7 @@ function AddLineItemCard({
                 onChange={(e) => setSupplierId(e.target.value)}
                 required={!isPlatformLine}
               >
-                <option value="">— Pick a supplier —</option>
+                <option value="">- Pick a supplier -</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.tradingName}

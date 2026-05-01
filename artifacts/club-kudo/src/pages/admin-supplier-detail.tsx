@@ -151,7 +151,7 @@ export default function AdminSupplierDetailPage() {
                 <div className="flex justify-between gap-2">
                   <dt className="text-gray-500">Account ID</dt>
                   <dd className="font-mono text-xs break-all">
-                    {s.stripeAccountId ?? "—"}
+                    {s.stripeAccountId ?? "-"}
                   </dd>
                 </div>
               </dl>
@@ -176,7 +176,7 @@ export default function AdminSupplierDetailPage() {
                     Onboarding link generated
                     {onboardingResult.emailedAt
                       ? ` and emailed at ${formatDateTime(onboardingResult.emailedAt)}`
-                      : " (email failed — share this link directly)"}
+                      : " (email failed, share this link directly)"}
                     .
                   </p>
                   <a

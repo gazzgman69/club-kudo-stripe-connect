@@ -120,7 +120,7 @@ export default function AdminClientDetailPage() {
               <div className="flex justify-between">
                 <span className="text-gray-500">Customer ID</span>
                 <span className="font-mono text-xs break-all">
-                  {client.data.stripeCustomerId ?? "—"}
+                  {client.data.stripeCustomerId ?? "-"}
                 </span>
               </div>
               <p className="text-xs text-gray-500">

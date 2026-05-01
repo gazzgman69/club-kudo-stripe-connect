@@ -2,7 +2,7 @@
  * Public landing page Stripe redirects suppliers to when their onboarding
  * link is no longer valid (expired, already used, etc). NOT auth-gated.
  *
- * No "click here for a new link" button — the supplier doesn't have a
+ * No "click here for a new link" button - the supplier doesn't have a
  * Club Kudo login. They contact the booking manager who can resend.
  * Phase 6 / supplier portal will fix this.
  */

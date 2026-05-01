@@ -50,7 +50,7 @@ function Router() {
       <Route path="/sign-in" component={SignInPage} />
 
       {/* Public supplier-facing landing pages from Stripe Connect onboarding.
-          Un-gated by design — suppliers have no Club Kudo login. */}
+          Un-gated by design - suppliers have no Club Kudo login. */}
       <Route path="/onboarding/complete" component={OnboardingCompletePage} />
       <Route path="/onboarding/expired" component={OnboardingExpiredPage} />
 

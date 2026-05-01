@@ -196,7 +196,7 @@ export default function AdminAuditLogPage() {
                           {entry.actorEmail ?? "system"}
                         </td>
                         <td className="px-4 py-2 font-mono text-xs text-gray-500">
-                          {entry.stripeEventId ?? "—"}
+                          {entry.stripeEventId ?? "-"}
                         </td>
                         <td className="px-4 py-2 text-xs text-blue-600">
                           {isOpen ? "Hide" : "Details"}

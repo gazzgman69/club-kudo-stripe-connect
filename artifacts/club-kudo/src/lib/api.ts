@@ -99,7 +99,7 @@ export async function apiFetch<T = unknown>(
     credentials: options.credentials ?? "include",
   });
 
-  // Try to parse a JSON error body. Some 204s have no body — handle.
+  // Try to parse a JSON error body. Some 204s have no body - handle.
   if (res.status === 204) {
     return undefined as T;
   }

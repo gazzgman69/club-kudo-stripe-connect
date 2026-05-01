@@ -204,7 +204,7 @@ export function SupplierForm({
             }}
             onFocus={(e) => e.target.select()}
             disabled={!values.vatRegistered}
-            placeholder={values.vatRegistered ? "20" : "—"}
+            placeholder={values.vatRegistered ? "20" : "-"}
           />
           <p className="text-xs text-gray-500">
             Stored against each line at creation, so later rate changes don't

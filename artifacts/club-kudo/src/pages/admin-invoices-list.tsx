@@ -162,10 +162,10 @@ export default function AdminInvoicesListPage() {
                       {TYPE_LABELS[inv.invoiceType]}
                     </td>
                     <td className="px-4 py-3 text-gray-900">
-                      {inv.gigName ?? "—"}
+                      {inv.gigName ?? "-"}
                     </td>
                     <td className="px-4 py-3 text-gray-700">
-                      {inv.clientName ?? "—"}
+                      {inv.clientName ?? "-"}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-900 font-medium">
                       {formatPence(inv.totalPence, inv.currency.toUpperCase())}

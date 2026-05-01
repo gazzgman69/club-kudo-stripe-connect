@@ -87,7 +87,7 @@ export default function AdminSuppliersListPage() {
                       {s.tradingName}
                     </td>
                     <td className="px-4 py-3 text-gray-700">
-                      {s.contactEmail ?? "—"}
+                      {s.contactEmail ?? "-"}
                     </td>
                     <td className="px-4 py-3">
                       <span
