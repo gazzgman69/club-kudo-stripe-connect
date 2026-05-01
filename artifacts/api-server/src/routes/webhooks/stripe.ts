@@ -90,8 +90,21 @@ export async function handleStripeWebhook(
   }
 
   if (!v2Thin && !v1Event) {
+    // Log enough context to diagnose secret mismatches without leaking
+    // the full secret. Truncate to the first 10 chars (long enough to
+    // disambiguate, short enough that it's not credentialed).
     req.log.warn(
-      { err: lastErr },
+      {
+        err: lastErr,
+        diag: {
+          v1SecretPrefix: v1Secret ? v1Secret.slice(0, 10) : null,
+          v1SecretLen: v1Secret?.length ?? 0,
+          v2SecretPrefix: v2Secret ? v2Secret.slice(0, 10) : null,
+          v2SecretLen: v2Secret?.length ?? 0,
+          rawBodyLen: rawBody?.length ?? 0,
+          sigHeaderPrefix: sigHeader.slice(0, 24),
+        },
+      },
       "stripe webhook signature verification failed",
     );
     res.status(400).json({ error: "signature verification failed" });
