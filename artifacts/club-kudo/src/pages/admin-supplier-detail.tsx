@@ -66,6 +66,20 @@ export default function AdminSupplierDetailPage() {
     onError: (err) => setActionError((err as Error).message),
   });
 
+  const refreshStripeStatus = useMutation({
+    mutationFn: () =>
+      apiFetch<{ supplier: Supplier; stripeTransferStatus: string | null }>(
+        `/api/admin/suppliers/${id}/refresh-stripe-status`,
+        { method: "POST" },
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["supplier", id], data.supplier);
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+      setActionError(null);
+    },
+    onError: (err) => setActionError((err as Error).message),
+  });
+
   const remove = useMutation({
     mutationFn: () =>
       apiFetch(`/api/admin/suppliers/${id}`, { method: "DELETE" }),
@@ -170,6 +184,21 @@ export default function AdminSupplierDetailPage() {
                   ? "Resend onboarding link"
                   : "Generate onboarding link"}
               </Button>
+              {s.stripeAccountId ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setActionError(null);
+                    refreshStripeStatus.mutate();
+                  }}
+                  disabled={refreshStripeStatus.isPending}
+                >
+                  {refreshStripeStatus.isPending
+                    ? "Checking Stripe…"
+                    : "Refresh status from Stripe"}
+                </Button>
+              ) : null}
               {onboardingResult ? (
                 <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 space-y-2">
                   <p className="text-emerald-800 text-xs font-medium">

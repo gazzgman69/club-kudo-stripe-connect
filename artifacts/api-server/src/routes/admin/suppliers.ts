@@ -533,6 +533,119 @@ async function handleGetStripeStatus(
   res.status(200).json(rows[0]);
 }
 
+/**
+ * POST /api/admin/suppliers/:id/refresh-stripe-status
+ *
+ * Pulls the current account state from Stripe and writes it to our
+ * supplier row. Same logic as the webhook handler, but admin-triggered.
+ * Useful when:
+ *   - A webhook was missed (delivery failure, endpoint not subscribed)
+ *   - You want to reconcile after a known Stripe-side change
+ *   - You're diagnosing a "still says onboarding" complaint
+ */
+async function handleRefreshStripeStatus(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  let params: z.infer<typeof idParamSchema>;
+  try {
+    params = idParamSchema.parse(req.params);
+  } catch (err) {
+    return next(err);
+  }
+
+  const rows = await db
+    .select()
+    .from(suppliersTable)
+    .where(
+      and(eq(suppliersTable.id, params.id), isNull(suppliersTable.deletedAt)),
+    )
+    .limit(1);
+
+  if (rows.length === 0) {
+    return next(new HttpError(404, "supplier_not_found", "Supplier not found"));
+  }
+  const supplier = rows[0];
+  if (!supplier.stripeAccountId) {
+    return next(
+      new HttpError(
+        400,
+        "no_stripe_account",
+        "Supplier has no Stripe account yet. Generate the onboarding link first.",
+      ),
+    );
+  }
+
+  const stripe = getStripe();
+  let account: unknown;
+  try {
+    account = await stripe.v2.core.accounts.retrieve(supplier.stripeAccountId);
+  } catch (err) {
+    req.log.error(
+      { err, stripeAccountId: supplier.stripeAccountId },
+      "stripe v2 accounts.retrieve failed",
+    );
+    return next(
+      new HttpError(
+        502,
+        "stripe_retrieve_failed",
+        (err as Error).message,
+      ),
+    );
+  }
+
+  interface AccountWithCapabilities {
+    configuration?: {
+      recipient?: {
+        capabilities?: {
+          stripe_balance?: {
+            stripe_transfers?: { status?: string };
+          };
+        };
+      };
+    };
+  }
+  const acc = account as AccountWithCapabilities;
+  const transferStatus =
+    acc.configuration?.recipient?.capabilities?.stripe_balance
+      ?.stripe_transfers?.status;
+
+  let mapped: "active" | "onboarding" | "suspended" = "onboarding";
+  if (transferStatus === "active") mapped = "active";
+  else if (
+    transferStatus === "restricted" ||
+    transferStatus === "disabled" ||
+    transferStatus === "pending"
+  )
+    mapped = "suspended";
+
+  const [updated] = await db
+    .update(suppliersTable)
+    .set({
+      stripeOnboardingStatus: mapped,
+      stripeCapabilitiesJson:
+        acc.configuration?.recipient?.capabilities ?? null,
+    })
+    .where(eq(suppliersTable.id, supplier.id))
+    .returning();
+
+  req.log.info(
+    {
+      supplierId: supplier.id,
+      stripeAccountId: supplier.stripeAccountId,
+      transferStatus,
+      mapped,
+    },
+    "supplier stripe status refreshed",
+  );
+
+  res.status(200).json({
+    supplier: updated,
+    stripeTransferStatus: transferStatus ?? null,
+  });
+}
+
 const router: IRouter = Router();
 
 // Apply requireAuth + requireRole inline on each route. A bare
@@ -558,6 +671,11 @@ router.get(
   "/admin/suppliers/:id/stripe-status",
   ...gates,
   handleGetStripeStatus,
+);
+router.post(
+  "/admin/suppliers/:id/refresh-stripe-status",
+  ...gates,
+  handleRefreshStripeStatus,
 );
 
 export default router;
