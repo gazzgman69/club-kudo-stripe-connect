@@ -447,8 +447,11 @@ async function handleCreateOnboardingLink(
         type: "account_onboarding",
         account_onboarding: {
           configurations: ["recipient"],
-          refresh_url: `${baseUrl}/api/admin/suppliers/${supplier.id}/stripe-onboarding-link`,
-          return_url: `${baseUrl}/api/admin/suppliers/${supplier.id}`,
+          // Both must be the React admin pages, NOT the JSON API. Stripe
+          // sends the user's browser to these — landing on a raw JSON
+          // payload is what we just fixed.
+          refresh_url: `${baseUrl}/admin/suppliers/${supplier.id}?onboarding=expired`,
+          return_url: `${baseUrl}/admin/suppliers/${supplier.id}?onboarding=complete`,
         },
       },
     });

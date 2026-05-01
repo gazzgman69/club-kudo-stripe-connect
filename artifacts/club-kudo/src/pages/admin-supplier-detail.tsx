@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation, useRoute } from "wouter";
+import { useMemo, useState } from "react";
+import { Link, useLocation, useRoute, useSearch } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { OnboardingLinkResponse, Supplier } from "@/lib/types";
@@ -18,6 +18,11 @@ export default function AdminSupplierDetailPage() {
   const id = params?.id ?? "";
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const search = useSearch();
+  const onboardingFlag = useMemo(
+    () => new URLSearchParams(search).get("onboarding"),
+    [search],
+  );
   const [editError, setEditError] = useState<string | null>(null);
   const [onboardingResult, setOnboardingResult] =
     useState<OnboardingLinkResponse | null>(null);
@@ -102,6 +107,18 @@ export default function AdminSupplierDetailPage() {
           ← Back to suppliers
         </Link>
       </div>
+
+      {onboardingFlag === "complete" ? (
+        <div className="mb-4 rounded-md bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">
+          Stripe onboarding submitted. Verification can take a few minutes —
+          the status below will update automatically when Stripe confirms.
+        </div>
+      ) : null}
+      {onboardingFlag === "expired" ? (
+        <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+          That onboarding link expired. Generate a new one below.
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
