@@ -580,7 +580,15 @@ async function handleRefreshStripeStatus(
   const stripe = getStripe();
   let account: unknown;
   try {
-    account = await stripe.v2.core.accounts.retrieve(supplier.stripeAccountId);
+    // V2 accounts.retrieve returns a minimal payload by default;
+    // opt into configuration + requirements so the capability path is
+    // present on the response.
+    account = await stripe.v2.core.accounts.retrieve(
+      supplier.stripeAccountId,
+      {
+        include: ["configuration.recipient", "requirements"],
+      } as never,
+    );
   } catch (err) {
     req.log.error(
       { err, stripeAccountId: supplier.stripeAccountId },

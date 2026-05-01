@@ -301,9 +301,15 @@ async function handleAccountStatusUpdate(
   const stripe = getStripe();
 
   // Fetch the current full account state to determine status.
+  // V2 accounts.retrieve returns a minimal payload by default;
+  // configuration / requirements / identity must be opted into via
+  // `include`. Without it `account.configuration` is null and the
+  // capability path can't be read.
   let account: unknown;
   try {
-    account = await stripe.v2.core.accounts.retrieve(accountId);
+    account = await stripe.v2.core.accounts.retrieve(accountId, {
+      include: ["configuration.recipient", "requirements"],
+    } as never);
   } catch (err) {
     ctx.log.error({ err, accountId }, "webhook: stripe v2 accounts.retrieve failed");
     return;
