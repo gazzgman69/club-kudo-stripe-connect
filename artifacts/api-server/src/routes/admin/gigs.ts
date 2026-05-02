@@ -937,6 +937,24 @@ async function handleCreateBalanceInvoice(
     );
   }
 
+  // Compute balance_due_date for the gig. The DB constraint
+  // gigs_balance_due_date_valid requires balance_due_date IS NOT NULL
+  // when status is balance_invoiced/balance_paid/complete, AND
+  // balance_due_date <= event_date. So use min(today + termsDays,
+  // event_date) - a payment term that lands after the event has
+  // already passed makes no sense for our use case (couples pay
+  // before the gig).
+  const today = new Date();
+  const candidateDue = new Date(today);
+  candidateDue.setDate(
+    candidateDue.getDate() + settings.defaultInvoicePaymentTermsDays,
+  );
+  const eventDate = new Date(gig.eventDate);
+  const balanceDueDate =
+    candidateDue <= eventDate ? candidateDue : eventDate;
+  // gigs.balance_due_date is a `date` column - use YYYY-MM-DD only.
+  const balanceDueDateIso = balanceDueDate.toISOString().slice(0, 10);
+
   const persisted = await db.transaction(async (tx) => {
     const [invoice] = await tx
       .insert(invoicesTable)
@@ -949,13 +967,17 @@ async function handleCreateBalanceInvoice(
         currency: settings.currency,
         issuedAt: new Date(),
         paidAt: isAutoPaidZero ? new Date() : null,
+        dueDate: balanceDueDateIso,
         pdfUrl: pdfUrl ?? null,
         hostedInvoiceUrl: hostedInvoiceUrl ?? null,
       })
       .returning();
     await tx
       .update(gigsTable)
-      .set({ status: "balance_invoiced" })
+      .set({
+        status: "balance_invoiced",
+        balanceDueDate: balanceDueDateIso,
+      })
       .where(eq(gigsTable.id, gig.id));
     return invoice;
   });

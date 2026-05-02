@@ -201,10 +201,35 @@ async function handleInvoicePaid(
   ctx: DispatchContext,
 ): Promise<void> {
   if (!invoice.id) return;
-  const stripeChargeId =
-    typeof (invoice as unknown as { charge?: string | null }).charge === "string"
-      ? ((invoice as unknown as { charge?: string | null }).charge as string)
-      : null;
+  // Fish out the charge id. Older Stripe API versions populated
+  // invoice.charge directly; from 2024-09-30 onwards that field is
+  // gone from the invoice payload by default. Fall back to a
+  // deterministic charges.list(...) lookup keyed off the invoice id,
+  // which Stripe still supports as a filter and is unaffected by API
+  // version drift.
+  const stripe = getStripe();
+  let stripeChargeId: string | null = null;
+  const invShape = invoice as unknown as {
+    charge?: string | null;
+  };
+  if (typeof invShape.charge === "string" && invShape.charge.length > 0) {
+    stripeChargeId = invShape.charge;
+  } else {
+    try {
+      const charges = await stripe.charges.list({
+        // The `invoice` filter on charges.list filters charges to those
+        // produced by paying that invoice. We only want the most recent.
+        ...({ invoice: invoice.id } as { invoice: string }),
+        limit: 1,
+      });
+      stripeChargeId = charges.data[0]?.id ?? null;
+    } catch (err) {
+      ctx.log.warn(
+        { err, stripeInvoiceId: invoice.id },
+        "webhook: charges.list lookup failed; transfer scheduler will skip",
+      );
+    }
+  }
 
   // Look up our local invoice row.
   const ourInvoiceRows = await db
