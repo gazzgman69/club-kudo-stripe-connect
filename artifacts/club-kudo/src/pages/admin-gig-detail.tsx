@@ -555,16 +555,24 @@ function AddLineItemCard({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="vatRateBps">VAT rate (basis points)</Label>
+            <Label htmlFor="vatRatePct">VAT rate (%)</Label>
             <Input
-              id="vatRateBps"
+              id="vatRatePct"
               type="number"
+              inputMode="decimal"
               min={0}
-              max={10000}
-              value={vatRateBps}
-              onChange={(e) =>
-                setVatRateBps(Number.parseInt(e.target.value, 10) || 0)
-              }
+              max={100}
+              step={0.01}
+              // Display as percent: stored basis points / 100. 2000 -> 20.
+              value={vatRateBps / 100}
+              onChange={(e) => {
+                const pct = Number.parseFloat(e.target.value);
+                setVatRateBps(
+                  Number.isFinite(pct) ? Math.round(pct * 100) : 0,
+                );
+              }}
+              onFocus={(e) => e.target.select()}
+              placeholder="20"
             />
           </div>
           {error ? (
