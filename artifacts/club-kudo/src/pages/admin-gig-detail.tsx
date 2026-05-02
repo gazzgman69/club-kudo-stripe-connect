@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
@@ -53,6 +53,9 @@ export default function AdminGigDetailPage() {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [editingLineItem, setEditingLineItem] = useState<GigLineItem | null>(
+    null,
+  );
 
   const detail = useQuery({
     queryKey: ["gig", id],
@@ -200,6 +203,8 @@ export default function AdminGigDetailPage() {
             supplierMap={supplierMap}
             onRemove={(lineItemId) => removeLineItem.mutate(lineItemId)}
             removing={removeLineItem.isPending}
+            onEdit={(li) => setEditingLineItem(li)}
+            editingId={editingLineItem?.id ?? null}
           />
           <LineItemsCard
             phase="balance"
@@ -207,8 +212,15 @@ export default function AdminGigDetailPage() {
             supplierMap={supplierMap}
             onRemove={(lineItemId) => removeLineItem.mutate(lineItemId)}
             removing={removeLineItem.isPending}
+            onEdit={(li) => setEditingLineItem(li)}
+            editingId={editingLineItem?.id ?? null}
           />
-          <AddLineItemCard gigId={gig.id} suppliers={suppliers.data?.items ?? []} />
+          <AddLineItemCard
+            gigId={gig.id}
+            suppliers={suppliers.data?.items ?? []}
+            editing={editingLineItem}
+            onCancelEdit={() => setEditingLineItem(null)}
+          />
         </div>
 
         <div className="space-y-6">
@@ -334,12 +346,16 @@ function LineItemsCard({
   supplierMap,
   onRemove,
   removing,
+  onEdit,
+  editingId,
 }: {
   phase: InvoicePhase;
   lineItems: GigLineItem[];
   supplierMap: Map<string, Supplier>;
   onRemove: (lineItemId: string) => void;
   removing: boolean;
+  onEdit: (lineItem: GigLineItem) => void;
+  editingId: string | null;
 }) {
   const total = lineItems.reduce((sum, li) => sum + li.totalPence, 0);
   return (
@@ -367,7 +383,12 @@ function LineItemsCard({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {lineItems.map((li) => (
-                <tr key={li.id}>
+                <tr
+                  key={li.id}
+                  className={
+                    editingId === li.id ? "bg-blue-50" : undefined
+                  }
+                >
                   <td className="px-4 py-2 text-gray-900">{li.description}</td>
                   <td className="px-4 py-2 text-gray-600 text-xs">
                     {li.lineType.replace(/_/g, " ")}
@@ -388,7 +409,13 @@ function LineItemsCard({
                   <td className="px-4 py-2 text-right font-medium">
                     {formatPence(li.totalPence)}
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    <button
+                      className="text-xs text-blue-600 hover:underline mr-3"
+                      onClick={() => onEdit(li)}
+                    >
+                      Edit
+                    </button>
                     <button
                       className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-50"
                       onClick={() => {
@@ -422,9 +449,13 @@ function LineItemsCard({
 function AddLineItemCard({
   gigId,
   suppliers,
+  editing,
+  onCancelEdit,
 }: {
   gigId: string;
   suppliers: Supplier[];
+  editing: GigLineItem | null;
+  onCancelEdit: () => void;
 }) {
   const queryClient = useQueryClient();
   const [description, setDescription] = useState("");
@@ -438,28 +469,58 @@ function AddLineItemCard({
   const meta = LINE_TYPES.find((t) => t.value === lineType);
   const isPlatformLine = meta?.platform ?? false;
 
-  const add = useMutation({
+  // Sync form state when entering edit mode (or clearing it).
+  useEffect(() => {
+    if (editing) {
+      setDescription(editing.description);
+      setLineType(editing.lineType);
+      setAmountPounds((editing.amountPence / 100).toString());
+      setVatRateBps(editing.vatRateBps);
+      setSupplierId(editing.supplierId ?? "");
+      setInvoicePhase(editing.invoicePhase);
+      setError(null);
+    } else {
+      setDescription("");
+      setAmountPounds("");
+      setVatRateBps(0);
+      setSupplierId("");
+      setError(null);
+    }
+  }, [editing]);
+
+  const save = useMutation({
     mutationFn: () => {
       const amountPence = Math.round(Number(amountPounds) * 100);
+      const body = {
+        description,
+        lineType,
+        amountPence,
+        vatRateBps,
+        isPlatformLine,
+        supplierId: isPlatformLine ? null : supplierId || null,
+        invoicePhase,
+      };
+      if (editing) {
+        return apiFetch(
+          `/api/admin/gigs/${gigId}/line-items/${editing.id}`,
+          { method: "PATCH", body },
+        );
+      }
       return apiFetch(`/api/admin/gigs/${gigId}/line-items`, {
         method: "POST",
-        body: {
-          description,
-          lineType,
-          amountPence,
-          vatRateBps,
-          isPlatformLine,
-          supplierId: isPlatformLine ? null : supplierId || null,
-          invoicePhase,
-        },
+        body,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gig", gigId] });
-      setDescription("");
-      setAmountPounds("");
-      setSupplierId("");
       setError(null);
+      if (editing) {
+        onCancelEdit();
+      } else {
+        setDescription("");
+        setAmountPounds("");
+        setSupplierId("");
+      }
     },
     onError: (err) => setError((err as Error).message),
   });
@@ -475,13 +536,15 @@ function AddLineItemCard({
       return;
     }
     setError(null);
-    add.mutate();
+    save.mutate();
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Add line item</CardTitle>
+        <CardTitle>
+          {editing ? `Edit line item: ${editing.description}` : "Add line item"}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -562,7 +625,7 @@ function AddLineItemCard({
               inputMode="decimal"
               min={0}
               max={100}
-              step={0.01}
+              step={1}
               // Display as percent: stored basis points / 100. 2000 -> 20.
               value={vatRateBps / 100}
               onChange={(e) => {
@@ -578,9 +641,25 @@ function AddLineItemCard({
           {error ? (
             <p className="text-sm text-red-600 md:col-span-2">{error}</p>
           ) : null}
-          <div className="md:col-span-2 flex justify-end">
-            <Button type="submit" disabled={add.isPending}>
-              {add.isPending ? "Adding…" : "Add line item"}
+          <div className="md:col-span-2 flex justify-end gap-2">
+            {editing ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancelEdit}
+                disabled={save.isPending}
+              >
+                Cancel
+              </Button>
+            ) : null}
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending
+                ? editing
+                  ? "Saving…"
+                  : "Adding…"
+                : editing
+                  ? "Save changes"
+                  : "Add line item"}
             </Button>
           </div>
         </form>
