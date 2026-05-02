@@ -121,6 +121,7 @@ export interface Invoice {
   paidAt: string | null;
   dueDate: string | null;
   pdfUrl: string | null;
+  hostedInvoiceUrl: string | null;
   createdAt: string;
   updatedAt: string;
   // Joined fields

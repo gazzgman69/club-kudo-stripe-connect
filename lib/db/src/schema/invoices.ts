@@ -31,6 +31,10 @@ export const invoicesTable = pgTable(
     dueDate: date("due_date"),
     stripeChargeId: text("stripe_charge_id"),
     pdfUrl: text("pdf_url"),
+    // Stripe's hosted invoice payment page. Distinct from pdfUrl,
+    // which points at the PDF download. The hosted URL is what you
+    // share with the client for self-serve payment.
+    hostedInvoiceUrl: text("hosted_invoice_url"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

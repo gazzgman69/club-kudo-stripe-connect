@@ -142,7 +142,21 @@ export default function AdminInvoiceDetailPage() {
                     {query.data.stripeChargeId ?? "-"}
                   </span>
                 </Field>
-                <Field label="Hosted PDF">
+                <Field label="Pay online">
+                  {query.data.hostedInvoiceUrl ? (
+                    <a
+                      href={query.data.hostedInvoiceUrl}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="text-blue-600 hover:underline font-medium"
+                    >
+                      Open hosted invoice -&gt;
+                    </a>
+                  ) : (
+                    "-"
+                  )}
+                </Field>
+                <Field label="PDF">
                   {query.data.pdfUrl ? (
                     <a
                       href={query.data.pdfUrl}

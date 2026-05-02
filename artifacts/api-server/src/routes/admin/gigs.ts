@@ -618,6 +618,7 @@ async function handleCreateReservationInvoice(
   // settings default. Override here if you'd like.
   let stripeInvoiceId: string;
   let pdfUrl: string | undefined;
+  let hostedInvoiceUrl: string | undefined;
   try {
     for (const li of lineItems) {
       const grossPence = Math.round(
@@ -652,6 +653,7 @@ async function handleCreateReservationInvoice(
     await stripe.invoices.sendInvoice(finalised.id);
     stripeInvoiceId = finalised.id;
     pdfUrl = finalised.invoice_pdf ?? undefined;
+    hostedInvoiceUrl = finalised.hosted_invoice_url ?? undefined;
   } catch (err) {
     req.log.error({ err, gigId: gig.id }, "stripe invoice flow failed");
     return next(
@@ -676,6 +678,7 @@ async function handleCreateReservationInvoice(
         currency: settings.currency,
         issuedAt: new Date(),
         pdfUrl: pdfUrl ?? null,
+        hostedInvoiceUrl: hostedInvoiceUrl ?? null,
       })
       .returning();
     await tx
@@ -838,6 +841,7 @@ async function handleCreateBalanceInvoice(
 
   let stripeInvoiceId: string;
   let pdfUrl: string | undefined;
+  let hostedInvoiceUrl: string | undefined;
   try {
     for (const li of lineItems) {
       const grossPence = Math.round(
@@ -873,6 +877,7 @@ async function handleCreateBalanceInvoice(
     await stripe.invoices.sendInvoice(finalised.id);
     stripeInvoiceId = finalised.id;
     pdfUrl = finalised.invoice_pdf ?? undefined;
+    hostedInvoiceUrl = finalised.hosted_invoice_url ?? undefined;
   } catch (err) {
     req.log.error({ err, gigId: gig.id }, "stripe balance invoice flow failed");
     return next(
@@ -896,6 +901,7 @@ async function handleCreateBalanceInvoice(
         currency: settings.currency,
         issuedAt: new Date(),
         pdfUrl: pdfUrl ?? null,
+        hostedInvoiceUrl: hostedInvoiceUrl ?? null,
       })
       .returning();
     await tx
