@@ -625,6 +625,10 @@ async function handleCreateReservationInvoice(
   let stripeInvoiceId: string;
   let pdfUrl: string | undefined;
   let hostedInvoiceUrl: string | undefined;
+  // True when totalPence is 0 (genuine freebie) - Stripe auto-finalises
+  // £0 invoices as paid and emails the receipt itself, so we skip the
+  // explicit sendInvoice call and persist locally as paid.
+  let isAutoPaidZero = false;
   try {
     const stripeInvoice = await stripe.invoices.create({
       customer: stripeCustomerId,
@@ -660,15 +664,19 @@ async function handleCreateReservationInvoice(
     if (!finalised.id) {
       throw new Error("Stripe invoice finalize returned no id");
     }
-    if ((finalised.amount_due ?? 0) === 0) {
-      // Hard fail loudly if we still ended up with a zero invoice.
-      // Stripe auto-marks £0 invoices as paid, which leaves the gig in
-      // a bad state and silently passes the smoke test, so refuse.
+    // Mismatch between what we computed locally and what Stripe finalised
+    // means line items didn't bind correctly. Refuse instead of sending.
+    // A legitimate £0 freebie (totalPence=0, amount_due=0) passes this
+    // check because both sides match.
+    if ((finalised.amount_due ?? 0) !== totalPence) {
       throw new Error(
-        `Finalised reservation invoice has amount_due=0 for gig ${gig.id}; refusing to send`,
+        `Finalised reservation invoice amount_due=${finalised.amount_due} doesn't match expected totalPence=${totalPence} for gig ${gig.id}; refusing to send`,
       );
     }
-    await stripe.invoices.sendInvoice(finalised.id);
+    isAutoPaidZero = (finalised.amount_due ?? 0) === 0;
+    if (!isAutoPaidZero) {
+      await stripe.invoices.sendInvoice(finalised.id);
+    }
     stripeInvoiceId = finalised.id;
     pdfUrl = finalised.invoice_pdf ?? undefined;
     hostedInvoiceUrl = finalised.hosted_invoice_url ?? undefined;
@@ -683,7 +691,11 @@ async function handleCreateReservationInvoice(
     );
   }
 
-  // Persist locally + transition gig status.
+  // Persist locally + transition gig status. Mirror Stripe's status:
+  // for a genuine £0 freebie, Stripe auto-marks the invoice as paid at
+  // finalise time, so we persist as paid with paidAt set. The
+  // invoice.paid webhook doesn't fire for these, so we have to write
+  // the terminal state ourselves.
   const persisted = await db.transaction(async (tx) => {
     const [invoice] = await tx
       .insert(invoicesTable)
@@ -691,10 +703,11 @@ async function handleCreateReservationInvoice(
         gigId: gig.id,
         invoiceType: "reservation",
         stripeInvoiceId,
-        status: "open",
+        status: isAutoPaidZero ? "paid" : "open",
         totalPence,
         currency: settings.currency,
         issuedAt: new Date(),
+        paidAt: isAutoPaidZero ? new Date() : null,
         pdfUrl: pdfUrl ?? null,
         hostedInvoiceUrl: hostedInvoiceUrl ?? null,
       })
@@ -864,6 +877,7 @@ async function handleCreateBalanceInvoice(
   let stripeInvoiceId: string;
   let pdfUrl: string | undefined;
   let hostedInvoiceUrl: string | undefined;
+  let isAutoPaidZero = false;
   try {
     const stripeInvoice = await stripe.invoices.create({
       customer: stripeCustomerId,
@@ -900,12 +914,15 @@ async function handleCreateBalanceInvoice(
     if (!finalised.id) {
       throw new Error("Stripe invoice finalize returned no id");
     }
-    if ((finalised.amount_due ?? 0) === 0) {
+    if ((finalised.amount_due ?? 0) !== totalPence) {
       throw new Error(
-        `Finalised balance invoice has amount_due=0 for gig ${gig.id}; refusing to send`,
+        `Finalised balance invoice amount_due=${finalised.amount_due} doesn't match expected totalPence=${totalPence} for gig ${gig.id}; refusing to send`,
       );
     }
-    await stripe.invoices.sendInvoice(finalised.id);
+    isAutoPaidZero = (finalised.amount_due ?? 0) === 0;
+    if (!isAutoPaidZero) {
+      await stripe.invoices.sendInvoice(finalised.id);
+    }
     stripeInvoiceId = finalised.id;
     pdfUrl = finalised.invoice_pdf ?? undefined;
     hostedInvoiceUrl = finalised.hosted_invoice_url ?? undefined;
@@ -927,10 +944,11 @@ async function handleCreateBalanceInvoice(
         gigId: gig.id,
         invoiceType: "balance",
         stripeInvoiceId,
-        status: "open",
+        status: isAutoPaidZero ? "paid" : "open",
         totalPence,
         currency: settings.currency,
         issuedAt: new Date(),
+        paidAt: isAutoPaidZero ? new Date() : null,
         pdfUrl: pdfUrl ?? null,
         hostedInvoiceUrl: hostedInvoiceUrl ?? null,
       })
