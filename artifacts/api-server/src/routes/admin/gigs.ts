@@ -612,20 +612,39 @@ async function handleCreateReservationInvoice(
     0,
   );
 
-  // Create one invoice item per gig line, then finalize+send.
-  // Days-until-due taken from settings; reservation invoices typically
-  // want to be paid quickly, so we use a tighter window than the
-  // settings default. Override here if you'd like.
+  // Create the draft invoice first, then bind each line item to it via
+  // the `invoice` parameter on invoiceItems.create. This is the modern
+  // Stripe pattern - older flows relied on creating "pending" items
+  // against the customer and letting invoices.create sweep them up,
+  // but Stripe API versions from 2023+ default
+  // `pending_invoice_items_behavior` to "exclude" which silently leaves
+  // those items orphaned and produces a £0 invoice that auto-finalises
+  // as paid. Binding via `invoice` removes the race entirely and means
+  // any orphaned pending items from previous failed attempts stay
+  // out of new invoices.
   let stripeInvoiceId: string;
   let pdfUrl: string | undefined;
   let hostedInvoiceUrl: string | undefined;
   try {
+    const stripeInvoice = await stripe.invoices.create({
+      customer: stripeCustomerId,
+      collection_method: "send_invoice",
+      days_until_due: settings.defaultInvoicePaymentTermsDays,
+      metadata: { gigId: gig.id, invoiceType: "reservation" },
+      auto_advance: false,
+      pending_invoice_items_behavior: "exclude",
+    });
+    if (!stripeInvoice.id) {
+      throw new Error("Stripe invoice was created without an id");
+    }
+
     for (const li of lineItems) {
       const grossPence = Math.round(
         (li.amountPence * (10000 + li.vatRateBps)) / 10000,
       );
       await stripe.invoiceItems.create({
         customer: stripeCustomerId,
+        invoice: stripeInvoice.id,
         amount: grossPence,
         currency: settings.currency,
         description: li.description,
@@ -636,19 +655,18 @@ async function handleCreateReservationInvoice(
         },
       });
     }
-    const stripeInvoice = await stripe.invoices.create({
-      customer: stripeCustomerId,
-      collection_method: "send_invoice",
-      days_until_due: settings.defaultInvoicePaymentTermsDays,
-      metadata: { gigId: gig.id, invoiceType: "reservation" },
-      auto_advance: false,
-    });
-    if (!stripeInvoice.id) {
-      throw new Error("Stripe invoice was created without an id");
-    }
+
     const finalised = await stripe.invoices.finalizeInvoice(stripeInvoice.id);
     if (!finalised.id) {
       throw new Error("Stripe invoice finalize returned no id");
+    }
+    if ((finalised.amount_due ?? 0) === 0) {
+      // Hard fail loudly if we still ended up with a zero invoice.
+      // Stripe auto-marks £0 invoices as paid, which leaves the gig in
+      // a bad state and silently passes the smoke test, so refuse.
+      throw new Error(
+        `Finalised reservation invoice has amount_due=0 for gig ${gig.id}; refusing to send`,
+      );
     }
     await stripe.invoices.sendInvoice(finalised.id);
     stripeInvoiceId = finalised.id;
@@ -839,16 +857,33 @@ async function handleCreateBalanceInvoice(
     0,
   );
 
+  // Same modern-Stripe pattern as the reservation handler: create the
+  // draft invoice first, bind each item to it via `invoice`, then
+  // finalise. See the comment block in handleSendReservationInvoice
+  // for the full reasoning.
   let stripeInvoiceId: string;
   let pdfUrl: string | undefined;
   let hostedInvoiceUrl: string | undefined;
   try {
+    const stripeInvoice = await stripe.invoices.create({
+      customer: stripeCustomerId,
+      collection_method: "send_invoice",
+      days_until_due: settings.defaultInvoicePaymentTermsDays,
+      metadata: { gigId: gig.id, invoiceType: "balance" },
+      auto_advance: false,
+      pending_invoice_items_behavior: "exclude",
+    });
+    if (!stripeInvoice.id) {
+      throw new Error("Stripe invoice was created without an id");
+    }
+
     for (const li of lineItems) {
       const grossPence = Math.round(
         (li.amountPence * (10000 + li.vatRateBps)) / 10000,
       );
       await stripe.invoiceItems.create({
         customer: stripeCustomerId,
+        invoice: stripeInvoice.id,
         amount: grossPence,
         currency: settings.currency,
         description: li.description,
@@ -860,19 +895,15 @@ async function handleCreateBalanceInvoice(
         },
       });
     }
-    const stripeInvoice = await stripe.invoices.create({
-      customer: stripeCustomerId,
-      collection_method: "send_invoice",
-      days_until_due: settings.defaultInvoicePaymentTermsDays,
-      metadata: { gigId: gig.id, invoiceType: "balance" },
-      auto_advance: false,
-    });
-    if (!stripeInvoice.id) {
-      throw new Error("Stripe invoice was created without an id");
-    }
+
     const finalised = await stripe.invoices.finalizeInvoice(stripeInvoice.id);
     if (!finalised.id) {
       throw new Error("Stripe invoice finalize returned no id");
+    }
+    if ((finalised.amount_due ?? 0) === 0) {
+      throw new Error(
+        `Finalised balance invoice has amount_due=0 for gig ${gig.id}; refusing to send`,
+      );
     }
     await stripe.invoices.sendInvoice(finalised.id);
     stripeInvoiceId = finalised.id;
