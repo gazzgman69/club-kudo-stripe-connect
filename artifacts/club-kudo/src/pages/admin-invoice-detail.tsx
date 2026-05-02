@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { Invoice } from "@/lib/types";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/format";
 import { AdminShell } from "@/components/admin-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 const TYPE_LABELS: Record<string, string> = {
   reservation: "Reservation",
@@ -35,12 +37,38 @@ function Field({
 export default function AdminInvoiceDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
+  const queryClient = useQueryClient();
+  const [forceVoidError, setForceVoidError] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["admin-invoice", id],
     queryFn: () => apiFetch<Invoice>(`/api/admin/invoices/${id}`),
     enabled: !!id,
   });
+
+  const forceVoid = useMutation({
+    mutationFn: (reason: string) =>
+      apiFetch<Invoice>(`/api/admin/invoices/${id}/force-void`, {
+        method: "POST",
+        body: { reason },
+      }),
+    onSuccess: () => {
+      setForceVoidError(null);
+      queryClient.invalidateQueries({ queryKey: ["admin-invoice", id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-invoices"] });
+    },
+    onError: (err: Error) => setForceVoidError(err.message),
+  });
+
+  function handleForceVoidClick() {
+    const reason = window.prompt(
+      "Force-void this invoice locally?\n\nThis marks the local row as void without touching Stripe. Used to release the gig's invoice guard when Stripe-side state can't be reconciled.\n\nEnter a reason for the audit log:",
+    );
+    if (!reason) return;
+    const trimmed = reason.trim();
+    if (!trimmed) return;
+    forceVoid.mutate(trimmed);
+  }
 
   return (
     <AdminShell>
@@ -210,6 +238,39 @@ export default function AdminInvoiceDetailPage() {
               </Link>
             </CardContent>
           </Card>
+
+          {query.data.status !== "void" && (
+            <Card className="border-red-200">
+              <CardHeader>
+                <CardTitle className="text-sm text-red-700">
+                  Danger zone
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-600">
+                  Force-void marks this invoice as <code>void</code> locally
+                  without touching Stripe. Use only when Stripe-side state
+                  cannot be reconciled (e.g. a £0 auto-paid orphan blocking
+                  the gig&apos;s invoice guard). Writes an audit-log entry
+                  with the reason you provide.
+                </p>
+                {forceVoidError && (
+                  <p className="text-sm text-red-600">{forceVoidError}</p>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-red-600 text-white hover:bg-red-700 border-transparent"
+                  onClick={handleForceVoidClick}
+                  disabled={forceVoid.isPending}
+                >
+                  {forceVoid.isPending
+                    ? "Voiding…"
+                    : "Force void (local only)"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </AdminShell>

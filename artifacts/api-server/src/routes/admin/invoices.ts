@@ -12,6 +12,7 @@ import {
   invoicesTable,
   gigsTable,
   clientsTable,
+  auditLogTable,
 } from "@workspace/db";
 import { HttpError } from "../../middlewares/errorHandler";
 import { requireAuth, requireRole } from "../../middlewares/auth";
@@ -158,9 +159,105 @@ async function handleGetInvoice(
   });
 }
 
+/**
+ * POST /api/admin/invoices/:id/force-void
+ *
+ * Mark a local invoice row as `void` without touching Stripe.
+ *
+ * Use case: an orphaned local row whose Stripe-side state can't be
+ * reconciled through the normal `invoice.voided` webhook path. Most
+ * commonly: a £0 invoice that Stripe auto-finalised and auto-marked as
+ * paid before our line items were attached, leaving the gig's
+ * reservation-invoice guard locked locally.
+ *
+ * Safety rails:
+ *  - Refuses if the row is already `void`
+ *  - Refuses if status is `paid` AND `paidAt` is set (real money was
+ *    reconciled - a force-void here would mask a real charge)
+ *  - Requires a non-empty `reason` in the body so the audit trail
+ *    captures why this lever was pulled
+ *  - Wraps the row update and audit insert in a single transaction
+ */
+async function handleForceVoidInvoice(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  let params: z.infer<typeof idParamSchema>;
+  try {
+    params = idParamSchema.parse(req.params);
+  } catch (err) {
+    return next(err);
+  }
+
+  const bodySchema = z.object({ reason: z.string().min(1).max(500) });
+  let body: z.infer<typeof bodySchema>;
+  try {
+    body = bodySchema.parse(req.body ?? {});
+  } catch (err) {
+    return next(err);
+  }
+
+  const before = await db
+    .select()
+    .from(invoicesTable)
+    .where(eq(invoicesTable.id, params.id))
+    .limit(1);
+
+  if (before.length === 0) {
+    return next(new HttpError(404, "invoice_not_found", "Invoice not found"));
+  }
+
+  const current = before[0];
+  if (current.status === "void") {
+    return next(
+      new HttpError(409, "invoice_already_void", "Invoice is already void"),
+    );
+  }
+  if (current.status === "paid" && current.paidAt !== null) {
+    return next(
+      new HttpError(
+        409,
+        "invoice_paid_reconciled",
+        "Refusing to void a paid invoice with a paid_at timestamp",
+      ),
+    );
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(invoicesTable)
+      .set({ status: "void" })
+      .where(eq(invoicesTable.id, params.id));
+
+    await tx.insert(auditLogTable).values({
+      action: "admin.invoice.force_voided",
+      entityType: "invoice",
+      entityId: params.id,
+      actorUserId: req.session?.userId ?? null,
+      beforeState: { status: current.status, paidAt: current.paidAt },
+      afterState: { status: "void" },
+      metadata: { reason: body.reason },
+    });
+  });
+
+  const after = await db
+    .select()
+    .from(invoicesTable)
+    .where(eq(invoicesTable.id, params.id))
+    .limit(1);
+
+  res.status(200).json(after[0]);
+}
+
 const router: IRouter = Router();
 const gates = [requireAuth, requireRole("admin")] as const;
 router.get("/admin/invoices", ...gates, handleListInvoices);
 router.get("/admin/invoices/:id", ...gates, handleGetInvoice);
+router.post(
+  "/admin/invoices/:id/force-void",
+  ...gates,
+  handleForceVoidInvoice,
+);
 
 export default router;
